@@ -1,0 +1,17 @@
+# Local / backup media (not needed on the site)
+assets/space360-full.mp4
+assets/space360-1080-backup.mp4
+assets/space360-old-loop.mp4
+assets/space360-4k-local.mp4
+assets/170064-842720165_medium.mp4
+assets/background.mp4
+assets/_preview/
+assets/_probe*
+assets/_src*
+
+# Tooling / OS
+serve.ps1
+*.ps1
+.DS_Store
+Thumbs.db
+.vercel

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ms">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Majlis Pelancaran — Program Sokongan Profesional: Dasar Pendidikan Digital</title>
+
+    <!-- Vendored locally so it also works offline at the venue -->
+    <script src="vendor/aframe.min.js"></script>
+    <script src="js/launch.js" defer></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #05060f;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+      }
+
+      /* Operator hint (Malay only) */
+      #hint {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        z-index: 9999;
+        padding: 9px 20px;
+        border-radius: 999px;
+        background: rgba(8, 16, 40, 0.7);
+        border: 1px solid rgba(214, 176, 106, 0.5);
+        color: #f3e2b8;
+        font-size: 13px;
+        letter-spacing: 0.4px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Operator-only note (desktop). Auto-hides once VR starts so it is never
+         part of the scene the audience sees. -->
+    <div id="hint">
+      Operator sahaja &nbsp;·&nbsp; SPACE / L = mula &nbsp;·&nbsp; ESC = tutup filem
+    </div>
+
+    <a-scene
+      launch-sequence
+      background="color: #000005"
+      renderer="colorManagement: true; antialias: true; exposure: 1; toneMapping: no"
+      loading-screen="dotsColor: #d6b06a; backgroundColor: #05060f"
+    >
+      <!-- ============ ASSETS ============ -->
+      <a-assets>
+        <!--
+          360° IMMERSIVE ENVIRONMENT (equirectangular loop).
+          Swap assets/space360.mp4 for any royalty-free 360 clip you own.
+          Plays muted + looped and wraps fully around the audience.
+        -->
+        <video
+          id="v360"
+          src="assets/space360.mp4"
+          preload="auto"
+          loop
+          muted
+          playsinline
+          webkit-playsinline
+          crossorigin="anonymous"
+        ></video>
+        <!--
+          OPENING FILM. Drop your file at assets/opening.mp4 (MP4 / H.264).
+          If missing, a placeholder panel is shown automatically.
+        -->
+        <video
+          id="openingVideo"
+          src="assets/opening.mp4"
+          preload="auto"
+          playsinline
+          webkit-playsinline
+          crossorigin="anonymous"
+        ></video>
+      </a-assets>
+
+      <!-- ============ 360 WORLD (wraps the whole audience) ============ -->
+      <a-videosphere
+        id="sky360"
+        src="#v360"
+        rotation="0 -90 0"
+        radius="500"
+        segments-height="64"
+        segments-width="64"
+        material="shader: flat; fog: false; npot: true"
+        sharp-video
+      ></a-videosphere>
+
+      <!-- Dimmer shell: fades in on launch so the film reads cinematically -->
+      <a-sphere
+        id="dimmer"
+        radius="60"
+        material="color: #000005; shader: flat; side: back; opacity: 0; transparent: true; fog: false; depthWrite: false"
+      ></a-sphere>
+
+      <!-- ============ LIGHTS (for the floating orb only) ============ -->
+      <a-entity light="type: ambient; color: #22314f; intensity: 0.6"></a-entity>
+      <a-entity
+        id="keyLight"
+        light="type: point; color: #7fb0ff; intensity: 0.9; distance: 12; decay: 1"
+        position="0 3 -1"
+      ></a-entity>
+
+      <!-- ============ LIGHT BEAM (shoots up on launch) ============ -->
+      <a-cylinder
+        id="beam"
+        radius="0.22"
+        height="0.1"
+        position="0 0 -1.6"
+        visible="false"
+        material="color: #cfe0ff; emissive: #cfe0ff; emissiveIntensity: 2; opacity: 0.5; transparent: true; side: double; fog: false"
+      ></a-cylinder>
+
+      <!-- ============ FLOATING TITLE (billboarded in front of the leader) ============ -->
+      <a-entity id="screenLogo" position="0 2.5 -3.4">
+        <a-plane
+          width="5"
+          height="1.35"
+          material="color: #030712; emissive: #05122e; emissiveIntensity: 0.5; opacity: 0.55; transparent: true; fog: false"
+        ></a-plane>
+        <a-text
+          value="MAJLIS PELANCARAN"
+          align="center"
+          color="#e6c079"
+          width="4.2"
+          letter-spacing="8"
+          position="0 0.34 0.02"
+        ></a-text>
+        <a-plane
+          width="3.6"
+          height="0.02"
+          position="0 0.13 0.02"
+          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1; fog: false"
+        ></a-plane>
+        <a-text
+          value="PROGRAM SOKONGAN PROFESIONAL: DASAR PENDIDIKAN DIGITAL"
+          align="center"
+          color="#eaf2ff"
+          width="4.6"
+          wrap-count="40"
+          position="0 -0.08 0.02"
+        ></a-text>
+      </a-entity>
+
+      <!-- ============ FLOATING FILM SCREEN (hidden until launch) ============ -->
+      <a-entity id="filmScreen" position="0 1.6 -4.4" visible="false">
+        <!-- Dark backdrop + thin bezel so it reads as a real screen -->
+        <a-plane
+          width="6.75"
+          height="3.85"
+          position="0 0 -0.04"
+          material="color: #04060e; emissive: #04060e; emissiveIntensity: 0.15; side: double; fog: false"
+        ></a-plane>
+        <a-plane
+          width="6.6"
+          height="3.72"
+          position="0 0 -0.02"
+          material="color: #0a1428; emissive: #0f1d3a; emissiveIntensity: 0.3; metalness: 0.6; roughness: 0.4; side: double; fog: false"
+        ></a-plane>
+
+        <!-- Opening film -->
+        <a-video
+          id="screenVideo"
+          src="#openingVideo"
+          width="6.4"
+          height="3.6"
+          position="0 0 0.02"
+          visible="false"
+        ></a-video>
+
+        <!-- Placeholder (shown only if opening.mp4 is missing) -->
+        <a-entity id="screenPlaceholder" visible="false" position="0 0 0.03">
+          <a-plane
+            width="6.4"
+            height="3.6"
+            material="color: #05080f; emissive: #060a14; emissiveIntensity: 0.4; fog: false"
+          ></a-plane>
+          <a-text
+            value="FILEM PEMBUKAAN\n\n(letakkan fail anda di assets/opening.mp4)"
+            align="center"
+            color="#cfe0ff"
+            width="5.5"
+            position="0 0 0.02"
+          ></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
+      <a-entity id="orbGroup" position="0 1.35 -1.6">
+        <!-- Faint vertical hologram beam feeding the core -->
+        <a-cylinder
+          radius="0.02"
+          height="0.55"
+          position="0 -0.5 0"
+          material="color: #9fd6ff; emissive: #9fd6ff; emissiveIntensity: 1.6; opacity: 0.22; transparent: true; side: double; fog: false"
+        ></a-cylinder>
+
+        <!-- Energy shells (soft volumetric look) -->
+        <a-sphere
+          radius="0.5"
+          material="color: #2f7bff; emissive: #2f7bff; emissiveIntensity: 1; opacity: 0.07; transparent: true; side: back; fog: false"
+        ></a-sphere>
+        <a-sphere
+          radius="0.4"
+          material="color: #6ea8ff; emissive: #6ea8ff; emissiveIntensity: 1.2; opacity: 0.14; transparent: true; side: back; fog: false"
+        ></a-sphere>
+        <!-- Dark glass body (clickable target) -->
+        <a-sphere
+          id="orb"
+          class="clickable"
+          launch-button
+          touch-launch="threshold: 0.34"
+          radius="0.3"
+          material="color: #071634; emissive: #2f6bd6; emissiveIntensity: 0.7; opacity: 0.55; transparent: true; metalness: 0.1; roughness: 0.05; fog: false"
+          animation__pulse="property: scale; dir: alternate; to: 1.06 1.06 1.06; loop: true; dur: 1400; easing: easeInOutSine"
+        ></a-sphere>
+        <!-- Hot inner core -->
+        <a-sphere
+          radius="0.13"
+          material="color: #eaf6ff; emissive: #dff0ff; emissiveIntensity: 2.6; fog: false"
+          animation__pulse="property: scale; dir: alternate; to: 1.35 1.35 1.35; loop: true; dur: 1100; easing: easeInOutSine"
+        ></a-sphere>
+
+        <!-- HUD reticle rings facing the viewer -->
+        <a-ring
+          radius-inner="0.5"
+          radius-outer="0.52"
+          material="color: #37b6ff; emissive: #37b6ff; emissiveIntensity: 1.5; opacity: 0.75; transparent: true; side: double; fog: false"
+          animation="property: rotation; to: 0 0 360; loop: true; dur: 14000; easing: linear"
+        ></a-ring>
+        <a-ring
+          radius-inner="0.57"
+          radius-outer="0.585"
+          theta-length="270"
+          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1.3; opacity: 0.6; transparent: true; side: double; fog: false"
+          animation="property: rotation; to: 0 0 -360; loop: true; dur: 9000; easing: linear"
+        ></a-ring>
+
+        <!-- Orbiting energy particles -->
+        <a-entity orbit-particles="count: 6; radius: 0.46"></a-entity>
+
+        <!-- Local glow light -->
+        <a-entity light="type: point; color: #8fd0ff; intensity: 0.9; distance: 6"></a-entity>
+      </a-entity>
+
+      <!-- ============ CAMERA RIG + CONTROLLERS ============ -->
+      <a-entity id="rig" position="0 1.6 0">
+        <a-camera position="0 0 0" wasd-controls="acceleration: 40" look-controls>
+          <!-- Aiming reticle. fuse OFF so merely looking never auto-launches;
+               trigger = controller button (or operator key). Mouse-click works on desktop. -->
+          <a-cursor
+            id="gazeCursor"
+            fuse="false"
+            raycaster="objects: .clickable; far: 30"
+            material="color: #d6b06a; shader: flat"
+            geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.02"
+            position="0 0 -1"
+          ></a-cursor>
+        </a-camera>
+
+        <!-- Controllers: laser aim + trigger -->
+        <a-entity
+          id="leftHand"
+          laser-controls="hand: left"
+          raycaster="objects: .clickable; far: 30; lineColor: #d6b06a; lineOpacity: 0.9"
+        ></a-entity>
+        <a-entity
+          id="rightHand"
+          laser-controls="hand: right"
+          raycaster="objects: .clickable; far: 30; lineColor: #d6b06a; lineOpacity: 0.9"
+        ></a-entity>
+        <!-- Bare-hand tracking: touching the orb also launches -->
+        <a-entity id="leftHandTrack" hand-tracking-controls="hand: left"></a-entity>
+        <a-entity id="rightHandTrack" hand-tracking-controls="hand: right"></a-entity>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
