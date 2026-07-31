@@ -63,6 +63,7 @@
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
+        <img id="palmOrbTexture" src="assets/palm-energy-orb.png" />
       </a-assets>
 
       <!-- ============ 360 WORLD (wraps the whole audience) ============ -->
@@ -103,34 +104,83 @@
       ></a-cylinder>
 
       <!-- ============ FLOATING TITLE (billboarded in front of the leader) ============ -->
-      <a-entity id="screenLogo" position="0 2.5 -3.4">
+      <a-entity id="screenLogo" position="0 2.38 -4">
+        <!-- Layered midnight glass panel -->
         <a-plane
-          width="5"
-          height="1.35"
-          material="color: #030712; emissive: #05122e; emissiveIntensity: 0.5; opacity: 0.55; transparent: true; fog: false"
+          width="4.6"
+          height="1.72"
+          position="0 0 -0.02"
+          material="color: #020711; emissive: #030b1d; emissiveIntensity: 0.45; opacity: 0.76; transparent: true; side: double; fog: false"
+        ></a-plane>
+        <a-plane
+          width="4.42"
+          height="1.54"
+          position="0 0 -0.01"
+          material="color: #06162d; emissive: #09214a; emissiveIntensity: 0.38; opacity: 0.34; transparent: true; side: double; fog: false"
+        ></a-plane>
+
+        <!-- Ceremonial gold crown line -->
+        <a-plane
+          width="4.6"
+          height="0.018"
+          position="0 0.86 0.01"
+          material="color: #e1bf70; emissive: #c99a3c; emissiveIntensity: 1.2; fog: false"
         ></a-plane>
         <a-text
           value="MAJLIS PELANCARAN"
           align="center"
-          color="#e6c079"
-          width="4.2"
-          letter-spacing="8"
-          position="0 0.34 0.02"
+          color="#e8cb82"
+          width="3.55"
+          wrap-count="24"
+          letter-spacing="7"
+          position="0 0.53 0.02"
         ></a-text>
+
+        <!-- Deliberate divider separating ceremony from programme -->
         <a-plane
-          width="3.6"
-          height="0.02"
-          position="0 0.13 0.02"
-          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1; fog: false"
+          width="1.5"
+          height="0.014"
+          position="0 0.29 0.02"
+          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1.25; fog: false"
         ></a-plane>
+        <a-sphere
+          radius="0.026"
+          position="-0.82 0.29 0.02"
+          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1.5; shader: flat; fog: false"
+        ></a-sphere>
+        <a-sphere
+          radius="0.026"
+          position="0.82 0.29 0.02"
+          material="color: #d6b06a; emissive: #d6b06a; emissiveIntensity: 1.5; shader: flat; fog: false"
+        ></a-sphere>
+
+        <!-- Programme and policy are separated into readable levels -->
         <a-text
-          value="PROGRAM SOKONGAN PROFESIONAL: DASAR PENDIDIKAN DIGITAL"
+          value="PROGRAM SOKONGAN PROFESIONAL:"
           align="center"
-          color="#eaf2ff"
-          width="4.6"
-          wrap-count="40"
-          position="0 -0.08 0.02"
+          color="#f2f6ff"
+          width="3.92"
+          wrap-count="38"
+          letter-spacing="1.2"
+          position="0 0.01 0.02"
         ></a-text>
+        <a-text
+          value="DASAR PENDIDIKAN DIGITAL"
+          align="center"
+          color="#bfefff"
+          width="3.65"
+          wrap-count="30"
+          letter-spacing="2.4"
+          position="0 -0.36 0.02"
+        ></a-text>
+
+        <!-- Cyan datum line visually connects the title to the energy orb -->
+        <a-plane
+          width="1.15"
+          height="0.012"
+          position="0 -0.66 0.02"
+          material="color: #6eeaff; emissive: #4edfff; emissiveIntensity: 1.3; opacity: 0.82; transparent: true; fog: false"
+        ></a-plane>
       </a-entity>
 
       <!-- ============ FLOATING FILM SCREEN (hidden until launch) ============ -->
@@ -178,7 +228,21 @@
 
       <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
       <a-entity id="orbGroup" position="0 1.3 -0.75">
-        <a-entity energy-orb-3d></a-entity>
+        <a-plane
+          width="0.52"
+          height="0.52"
+          position="0 0 0.01"
+          material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0.95; blending: additive; depthWrite: false; side: double; fog: false"
+          animation__pulse="property: scale; dir: alternate; to: 1.035 1.035 1.035; loop: true; dur: 1500; easing: easeInOutSine"
+          animation__float="property: position; dir: alternate; to: 0 0.035 0.01; loop: true; dur: 2200; easing: easeInOutSine"
+        ></a-plane>
+        <a-plane
+          width="0.58"
+          height="0.58"
+          material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0.16; blending: additive; depthWrite: false; side: double; fog: false"
+          animation__turn="property: rotation; to: 0 0 -360; loop: true; dur: 24000; easing: linear"
+          animation__pulse="property: scale; dir: alternate; to: 1.08 1.08 1.08; loop: true; dur: 2100; easing: easeInOutSine"
+        ></a-plane>
         <a-sphere
           id="orb"
           class="clickable"
