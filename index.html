@@ -63,7 +63,7 @@
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
-        <img id="ceremonialOrbTexture" src="assets/ceremonial-light-orb.png" />
+        <a-asset-item id="staffPickOrb" src="assets/staff_pick.glb"></a-asset-item>
       </a-assets>
 
       <!-- ============ 360 WORLD (wraps the whole audience) ============ -->
@@ -179,19 +179,18 @@
 
       <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
       <a-entity id="orbGroup" position="0 1.35 -1.6">
-        <a-plane
-          width="1.7"
-          height="1.7"
-          material="src: #ceremonialOrbTexture; shader: flat; transparent: true; blending: additive; alphaTest: 0.01; side: double; fog: false"
-          animation__pulse="property: scale; dir: alternate; to: 1.06 1.06 1.06; loop: true; dur: 1600; easing: easeInOutSine"
-          animation__turn="property: rotation; dir: alternate; to: 0 0 4; loop: true; dur: 9000; easing: easeInOutSine"
-        ></a-plane>
+        <a-entity
+          gltf-model="#staffPickOrb"
+          energy-orb-style
+          scale="0.065 0.065 0.065"
+          animation__float="property: position; dir: alternate; to: 0 0.06 0; loop: true; dur: 1800; easing: easeInOutSine"
+        ></a-entity>
         <a-sphere
           id="orb"
           class="clickable"
           launch-button
-          touch-launch="threshold: 0.42"
-          radius="0.42"
+          touch-launch="threshold: 0.5"
+          radius="0.5"
           material="color: #000000; opacity: 0.001; transparent: true; depthWrite: false; fog: false"
         ></a-sphere>
       </a-entity>
@@ -199,16 +198,14 @@
       <!-- ============ CAMERA RIG + CONTROLLERS ============ -->
       <a-entity id="rig" position="0 1.6 0">
         <a-camera position="0 0 0" wasd-controls="acceleration: 40" look-controls>
-          <!-- Aiming reticle. fuse OFF so merely looking never auto-launches;
-               trigger = controller button (or operator key). Mouse-click works on desktop. -->
-          <a-cursor
+          <!-- Desktop clicks use the real mouse position; VR uses controller rays. -->
+          <a-entity
             id="gazeCursor"
-            fuse="false"
+            cursor="rayOrigin: mouse; fuse: false"
             raycaster="objects: .clickable; far: 30"
             material="color: #d6b06a; shader: flat"
             geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.02"
-            position="0 0 -1"
-          ></a-cursor>
+          ></a-entity>
         </a-camera>
 
         <!-- Controllers: laser aim + trigger -->
