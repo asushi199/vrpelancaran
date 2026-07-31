@@ -178,50 +178,6 @@ AFRAME.registerComponent("orbit-particles", {
 });
 
 /* =============================================================
-   energy-orb-style — run the GLB animation and apply the
-   ceremony's blue-energy / champagne-gold material palette
-   ============================================================= */
-AFRAME.registerComponent("energy-orb-style", {
-  init() {
-    this.mixer = null;
-    this.el.addEventListener("model-loaded", (event) => {
-      const model = event.detail.model;
-      model.traverse((node) => {
-        if (!node.isMesh) return;
-        const materials = Array.isArray(node.material) ? node.material : [node.material];
-        materials.forEach((material) => {
-          if (!material) return;
-          const isOuterShell = material.name === "outer";
-          material.color.set(isOuterShell ? "#d6a84f" : "#2e6bff");
-          if (material.emissive) {
-            material.emissive.set(isOuterShell ? "#8d5510" : "#174bff");
-            material.emissiveIntensity = isOuterShell ? 0.45 : 1.9;
-          }
-          if ("metalness" in material) material.metalness = isOuterShell ? 0.4 : 0.05;
-          if ("roughness" in material) material.roughness = isOuterShell ? 0.25 : 0.3;
-          material.opacity = isOuterShell ? 0.3 : 0.72;
-          material.transparent = true;
-          material.depthWrite = false;
-          if (!isOuterShell) material.blending = THREE.AdditiveBlending;
-          material.needsUpdate = true;
-        });
-      });
-
-      if (model.animations && model.animations.length) {
-        this.mixer = new THREE.AnimationMixer(model);
-        model.animations.forEach((clip) => this.mixer.clipAction(clip).play());
-      }
-    });
-  },
-  tick(time, delta) {
-    if (this.mixer) this.mixer.update(delta / 1000);
-  },
-  remove() {
-    if (this.mixer) this.mixer.stopAllAction();
-  },
-});
-
-/* =============================================================
    gltf-orb-effect — play the model's own motion and make its
    metallic shards readable without Sketchfab's studio lighting
    ============================================================= */
