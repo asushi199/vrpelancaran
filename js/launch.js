@@ -243,10 +243,14 @@ AFRAME.registerComponent("orbit-particles", {
 });
 
 /* =============================================================
-   standby-anchor - follow the current wearer until launch, then
-   keep the ceremony fixed in the room for comfortable viewing
+   standby-anchor - re-centre after the headset is moved, wait for
+   the new wearer to settle, then lock the ceremony in the room
    ============================================================= */
 AFRAME.registerComponent("standby-anchor", {
+  schema: {
+    moveThreshold: { default: 0.42 },
+    stableDuration: { default: 1200 },
+  },
   init() {
     this.camera = null;
     this.cameraPosition = new THREE.Vector3();
@@ -254,21 +258,130 @@ AFRAME.registerComponent("standby-anchor", {
     this.anchorQuaternion = new THREE.Quaternion();
     this.cameraRotation = new THREE.Euler(0, 0, 0, "YXZ");
     this.up = new THREE.Vector3(0, 1, 0);
-  },
-  tick() {
-    const scene = this.el.sceneEl;
-    if (!scene || scene.is("launched")) return;
+    this.samplePosition = new THREE.Vector3();
+    this.lockedCameraPosition = new THREE.Vector3();
+    this.sampleYaw = 0;
+    this.lastSampleTime = 0;
+    this.stableSince = 0;
+    this.relocating = false;
+    this.locked = false;
 
+    this.onEnterVR = () => this.beginRelocation();
+    this.onExitVR = () => {
+      this.relocating = false;
+      this.locked = false;
+      this.el.setAttribute("visible", true);
+    };
+    this.onRecenter = () => this.beginRelocation();
+    this.onVisibilityChange = () => {
+      if (!document.hidden && this.el.sceneEl.is("vr-mode")) this.beginRelocation();
+    };
+
+    this.el.sceneEl.addEventListener("enter-vr", this.onEnterVR);
+    this.el.sceneEl.addEventListener("exit-vr", this.onExitVR);
+    this.el.sceneEl.addEventListener("recenter-standby", this.onRecenter);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+  },
+  updateCameraPose() {
+    const scene = this.el.sceneEl;
     if (!this.camera) this.camera = scene.camera && scene.camera.el;
-    if (!this.camera || !this.camera.object3D) return;
+    if (!this.camera || !this.camera.object3D) return false;
 
     this.camera.object3D.getWorldPosition(this.cameraPosition);
     this.camera.object3D.getWorldQuaternion(this.cameraQuaternion);
     this.cameraRotation.setFromQuaternion(this.cameraQuaternion, "YXZ");
     this.anchorQuaternion.setFromAxisAngle(this.up, this.cameraRotation.y);
+    return true;
+  },
+  alignToCamera() {
+    if (!this.updateCameraPose()) return false;
 
     this.el.object3D.position.copy(this.cameraPosition);
     this.el.object3D.quaternion.copy(this.anchorQuaternion);
+    return true;
+  },
+  beginRelocation() {
+    if (this.el.sceneEl.is("launched")) return;
+    this.relocating = true;
+    this.locked = false;
+    this.lastSampleTime = 0;
+    this.stableSince = 0;
+    this.el.removeAttribute("animation__settle");
+    this.el.setAttribute("scale", "1 1 1");
+    this.el.setAttribute("visible", false);
+  },
+  lockAtCurrentPose() {
+    if (!this.alignToCamera()) return;
+    this.lockedCameraPosition.copy(this.cameraPosition);
+    this.relocating = false;
+    this.locked = true;
+    this.el.setAttribute("visible", true);
+    this.el.setAttribute("scale", "0.965 0.965 0.965");
+    this.el.removeAttribute("animation__settle");
+    this.el.setAttribute("animation__settle", {
+      property: "scale",
+      from: "0.965 0.965 0.965",
+      to: "1 1 1",
+      dur: 520,
+      easing: "easeOutCubic",
+    });
+  },
+  tick(time) {
+    const scene = this.el.sceneEl;
+    if (!scene || scene.is("launched")) return;
+
+    // Desktop preview remains centred continuously; immersive VR uses locking.
+    if (!scene.is("vr-mode")) {
+      this.alignToCamera();
+      this.el.setAttribute("visible", true);
+      return;
+    }
+
+    if (time - this.lastSampleTime < 80 || !this.updateCameraPose()) return;
+
+    if (this.relocating) {
+      this.el.object3D.position.copy(this.cameraPosition);
+      this.el.object3D.quaternion.copy(this.anchorQuaternion);
+
+      if (!this.lastSampleTime) {
+        this.samplePosition.copy(this.cameraPosition);
+        this.sampleYaw = this.cameraRotation.y;
+        this.stableSince = time;
+      } else {
+        const positionDelta = this.cameraPosition.distanceTo(this.samplePosition);
+        const yawDelta = Math.abs(
+          Math.atan2(
+            Math.sin(this.cameraRotation.y - this.sampleYaw),
+            Math.cos(this.cameraRotation.y - this.sampleYaw)
+          )
+        );
+
+        if (positionDelta < 0.018 && yawDelta < 0.03) {
+          if (!this.stableSince) this.stableSince = time;
+        } else {
+          this.stableSince = 0;
+        }
+
+        this.samplePosition.copy(this.cameraPosition);
+        this.sampleYaw = this.cameraRotation.y;
+
+        if (this.stableSince && time - this.stableSince >= this.data.stableDuration) {
+          this.lockAtCurrentPose();
+        }
+      }
+    } else if (!this.locked) {
+      this.lockAtCurrentPose();
+    } else if (this.cameraPosition.distanceTo(this.lockedCameraPosition) > this.data.moveThreshold) {
+      this.beginRelocation();
+    }
+
+    this.lastSampleTime = time;
+  },
+  remove() {
+    this.el.sceneEl.removeEventListener("enter-vr", this.onEnterVR);
+    this.el.sceneEl.removeEventListener("exit-vr", this.onExitVR);
+    this.el.sceneEl.removeEventListener("recenter-standby", this.onRecenter);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
   },
 });
 
@@ -430,6 +543,11 @@ AFRAME.registerComponent("launch-sequence", {
         this.resetToIdle();
         return;
       }
+      if (e.code === "KeyR" && !this.fired) {
+        e.preventDefault();
+        scene.emit("recenter-standby");
+        return;
+      }
       if (e.code === "Space" || e.key.toLowerCase() === "l") {
         e.preventDefault();
         scene.emit("launch");
@@ -582,6 +700,7 @@ AFRAME.registerComponent("launch-sequence", {
 
     this.fired = false;
     this.el.removeState("launched");
+    this.el.emit("recenter-standby");
 
     if (this.hint && !this.el.is("vr-mode")) this.hint.style.display = "";
 
