@@ -184,32 +184,76 @@ AFRAME.registerComponent("orbit-particles", {
 AFRAME.registerComponent("touch-launch", {
   schema: { threshold: { default: 0.34 } },
   init() {
-    this.hands = [];
-    ["#leftHand", "#rightHand", "#leftHandTrack", "#rightHandTrack"].forEach((id) => {
-      const e = this.el.sceneEl.querySelector(id);
-      if (e) this.hands.push(e);
-    });
+    this.controllers = [];
+    this.trackedHands = [];
+    this.pinchHandlers = new Map();
     this._o = new THREE.Vector3();
     this._h = new THREE.Vector3();
     this._t = 0;
+
+    this.resolveInputs = this.resolveInputs.bind(this);
+    this.onEnterVR = () => this.resolveInputs();
+    this.el.sceneEl.addEventListener("loaded", this.resolveInputs, { once: true });
+    this.el.sceneEl.addEventListener("enter-vr", this.onEnterVR);
+    this.resolveInputs();
+  },
+  resolveInputs() {
+    const scene = this.el.sceneEl;
+    this.controllers = ["#leftHand", "#rightHand"]
+      .map((id) => scene.querySelector(id))
+      .filter(Boolean);
+    this.trackedHands = ["#leftHandTrack", "#rightHandTrack"]
+      .map((id) => scene.querySelector(id))
+      .filter(Boolean);
+
+    for (const hand of this.trackedHands) {
+      if (this.pinchHandlers.has(hand)) continue;
+      const handler = (event) => {
+        const position = event.detail && event.detail.position;
+        if (position) this.tryLaunchAt(position);
+      };
+      hand.addEventListener("pinchstarted", handler);
+      this.pinchHandlers.set(hand, handler);
+    }
+  },
+  tryLaunchAt(position) {
+    if (this.el.sceneEl.is("launched") || !this.el.object3D) return false;
+    this.el.object3D.getWorldPosition(this._o);
+    this._h.copy(position);
+    if (this._o.distanceTo(this._h) >= this.data.threshold) return false;
+    this.el.sceneEl.emit("launch");
+    return true;
   },
   tick(time) {
     // Throttle to ~every 80ms; stop checking once launched
     if (time - this._t < 80) return;
     this._t = time;
     if (this.el.sceneEl.is("launched")) return;
-    if (!this.el.object3D) return;
-    this.el.object3D.getWorldPosition(this._o);
-    const thr = this.data.threshold;
-    for (const hand of this.hands) {
-      if (!hand.object3D || !hand.object3D.visible) continue;
-      hand.object3D.getWorldPosition(this._h);
-      if (this._h.lengthSq() === 0) continue; // untracked input sits at origin
-      if (this._o.distanceTo(this._h) < thr) {
-        this.el.sceneEl.emit("launch");
-        break;
-      }
+
+    if (!this.controllers.length && !this.trackedHands.length) this.resolveInputs();
+
+    // Bare-hand tracking: test the real index fingertip, not the hand entity origin.
+    for (const hand of this.trackedHands) {
+      const tracking = hand.components["hand-tracking-controls"];
+      if (!tracking || !tracking.hasPoses || !tracking.indexTipPosition) continue;
+      if (this.tryLaunchAt(tracking.indexTipPosition)) return;
     }
+
+    // Physical controller proximity remains available as a fallback.
+    for (const controller of this.controllers) {
+      if (!controller.object3D || !controller.object3D.visible) continue;
+      controller.object3D.getWorldPosition(this._h);
+      if (this._h.lengthSq() === 0) continue;
+      if (this.tryLaunchAt(this._h)) return;
+    }
+  },
+  remove() {
+    this.el.sceneEl.removeEventListener("loaded", this.resolveInputs);
+    this.el.sceneEl.removeEventListener("enter-vr", this.onEnterVR);
+    for (const [hand, handler] of this.pinchHandlers) {
+      hand.removeEventListener("pinchstarted", handler);
+    }
+    this.pinchHandlers.clear();
   },
 });
 
