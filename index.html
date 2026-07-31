@@ -105,13 +105,30 @@
       ></a-cylinder>
 
       <!-- ============ FLOATING TITLE (billboarded in front of the leader) ============ -->
-      <a-entity id="screenLogo" position="0 2.04 -4">
+      <a-entity
+        id="screenLogo"
+        position="0 2.04 -4"
+        animation__approach="property: position; from: 0 2.04 -4.42; to: 0 2.04 -4; dur: 1800; easing: easeOutCubic"
+        animation__float="property: position; from: 0 2.04 -4; to: 0 2.075 -4; dir: alternate; loop: true; delay: 1900; dur: 4600; easing: easeInOutSine"
+      >
         <!-- Black pixels vanish through additive blending, leaving only the cinematic light lettering. -->
         <a-plane
           width="4.95"
           height="2.76"
-          material="src: #cinematicTitleTexture; shader: flat; transparent: true; opacity: 0.94; blending: additive; depthWrite: false; side: double; fog: false"
-          animation__shimmer="property: material.opacity; dir: alternate; from: 0.9; to: 1; loop: true; dur: 3200; easing: easeInOutSine"
+          material="src: #cinematicTitleTexture; shader: flat; transparent: true; opacity: 0.96; blending: additive; depthWrite: false; side: double; fog: false"
+          animation__reveal="property: material.opacity; from: 0; to: 0.96; delay: 120; dur: 1600; easing: easeOutCubic"
+          animation__focus="property: scale; from: 1.025 1.025 1.025; to: 1 1 1; dur: 1800; easing: easeOutCubic"
+        ></a-plane>
+
+        <!-- A restrained second exposure gives the lettering a slow cinematic energy pulse. -->
+        <a-plane
+          width="4.95"
+          height="2.76"
+          position="0 0 -0.012"
+          scale="1.012 1.012 1.012"
+          material="src: #cinematicTitleTexture; shader: flat; transparent: true; opacity: 0.04; blending: additive; depthWrite: false; side: double; fog: false"
+          animation__bloom="property: material.opacity; from: 0.035; to: 0.12; dir: alternate; loop: true; delay: 1800; dur: 3000; easing: easeInOutSine"
+          animation__breathe="property: scale; from: 1.008 1.008 1.008; to: 1.02 1.02 1.02; dir: alternate; loop: true; delay: 1800; dur: 4200; easing: easeInOutSine"
         ></a-plane>
       </a-entity>
 
