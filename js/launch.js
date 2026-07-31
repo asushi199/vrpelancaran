@@ -28,17 +28,76 @@ const SFX = (() => {
     osc.start();
     osc.stop(ac.currentTime + dur + 0.02);
   }
+
+  function ceremonialLaunch() {
+    const ac = ensure();
+    if (!ac) return;
+
+    const now = ac.currentTime;
+    const master = ac.createGain();
+    const compressor = ac.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-18, now);
+    compressor.knee.setValueAtTime(18, now);
+    compressor.ratio.setValueAtTime(5, now);
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.42, now + 0.06);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.15);
+    master.connect(compressor).connect(ac.destination);
+
+    // A warm rising foundation gives the cue weight without a harsh impact.
+    const body = ac.createOscillator();
+    const bodyGain = ac.createGain();
+    body.type = "sine";
+    body.frequency.setValueAtTime(110, now);
+    body.frequency.exponentialRampToValueAtTime(220, now + 0.95);
+    bodyGain.gain.setValueAtTime(0.0001, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.34, now + 0.08);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.35);
+    body.connect(bodyGain).connect(master);
+    body.start(now);
+    body.stop(now + 1.4);
+
+    // Filtered air adds a restrained energy sweep around the orb.
+    const noiseBuffer = ac.createBuffer(1, Math.ceil(ac.sampleRate * 1.35), ac.sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
+    const noise = ac.createBufferSource();
+    const filter = ac.createBiquadFilter();
+    const noiseGain = ac.createGain();
+    noise.buffer = noiseBuffer;
+    filter.type = "bandpass";
+    filter.Q.setValueAtTime(1.1, now);
+    filter.frequency.setValueAtTime(280, now);
+    filter.frequency.exponentialRampToValueAtTime(2400, now + 0.95);
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.12, now + 0.28);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.28);
+    noise.connect(filter).connect(noiseGain).connect(master);
+    noise.start(now);
+    noise.stop(now + 1.35);
+
+    // A suspended major chord supplies the polished ceremonial shimmer.
+    [440, 554.37, 659.25, 880].forEach((frequency, index) => {
+      const osc = ac.createOscillator();
+      const gainNode = ac.createGain();
+      const start = now + 0.42 + index * 0.055;
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequency, start);
+      gainNode.gain.setValueAtTime(0.0001, start);
+      gainNode.gain.exponentialRampToValueAtTime(0.11 - index * 0.014, start + 0.035);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 1.3);
+      osc.connect(gainNode).connect(master);
+      osc.start(start);
+      osc.stop(start + 1.35);
+    });
+  }
+
   return {
     hover() {
-      tone({ freq: 880, dur: 0.08, type: "triangle", gain: 0.08 });
-    },
-    click() {
-      tone({ freq: 520, dur: 0.12, type: "square", gain: 0.15 });
+      tone({ freq: 784, dur: 0.11, type: "sine", gain: 0.055 });
     },
     launch() {
-      // rising whoosh + shimmer
-      tone({ freq: 180, slideTo: 1200, dur: 1.1, type: "sawtooth", gain: 0.22 });
-      setTimeout(() => tone({ freq: 660, slideTo: 1760, dur: 0.9, type: "sine", gain: 0.14 }), 120);
+      ceremonialLaunch();
     },
   };
 })();
@@ -270,7 +329,6 @@ AFRAME.registerComponent("launch-button", {
       this.el.setAttribute("material", "emissiveIntensity", 1.4);
     });
     this.el.addEventListener("click", () => {
-      SFX.click();
       this.el.sceneEl.emit("launch");
     });
   },
@@ -286,6 +344,7 @@ AFRAME.registerComponent("launch-sequence", {
 
     const scene = this.el;
     this.orbGroup = scene.querySelector("#orbGroup");
+    this.orbEcho = scene.querySelector("#orbEcho");
     this.orb = scene.querySelector("#orb");
     this.screenLogo = scene.querySelector("#screenLogo");
     this.screenVideo = scene.querySelector("#screenVideo");
@@ -348,24 +407,9 @@ AFRAME.registerComponent("launch-sequence", {
     this.el.addState("launched");
 
     SFX.launch();
-    this.burstParticles();
-    this.playBeam();
-    this.playRipple();
+    this.playOrbTransition();
 
     if (this.hint) this.hint.style.display = "none";
-
-    // Fade the orb out
-    if (this.orbGroup) {
-      this.orbGroup.removeAttribute("animation__out");
-      this.orbGroup.setAttribute("animation__out", {
-        property: "scale",
-        to: "0 0 0",
-        dur: 700,
-        easing: "easeInBack",
-      });
-      clearTimeout(this._orbHideTimer);
-      this._orbHideTimer = setTimeout(() => this.orbGroup.setAttribute("visible", false), 750);
-    }
 
     // Dim the surrounding 360 so the film reads cinematically
     if (this.dimmer) {
@@ -374,17 +418,17 @@ AFRAME.registerComponent("launch-sequence", {
       this.dimmer.setAttribute("animation__dim", {
         property: "material.opacity",
         to: 0.78,
-        dur: 900,
+        delay: 420,
+        dur: 780,
         easing: "easeInOutSine",
       });
     }
-    if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.6, 0.12, 900);
-    if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.9, 0.25, 900);
+    if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.6, 0.12, 1200);
+    if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.9, 0.25, 1200);
 
-    // Float the film screen in, then play after the burst
-    if (this.filmScreen) this.filmScreen.setAttribute("visible", true);
+    // The screen appears only after the orb has completed its launch gesture.
     clearTimeout(this._revealTimer);
-    this._revealTimer = setTimeout(() => this.revealScreen(), 850);
+    this._revealTimer = setTimeout(() => this.revealScreen(), 1120);
   },
 
   setup360() {
@@ -402,6 +446,18 @@ AFRAME.registerComponent("launch-sequence", {
 
   revealScreen() {
     if (this.screenLogo) this.screenLogo.setAttribute("visible", false);
+    if (this.filmScreen) {
+      this.filmScreen.setAttribute("visible", true);
+      this.filmScreen.setAttribute("scale", "0.94 0.94 0.94");
+      this.filmScreen.removeAttribute("animation__reveal");
+      this.filmScreen.setAttribute("animation__reveal", {
+        property: "scale",
+        from: "0.94 0.94 0.94",
+        to: "1 1 1",
+        dur: 760,
+        easing: "easeOutCubic",
+      });
+    }
 
     if (this.hasVideo && this.video) {
       const p = this.video.play();
@@ -413,6 +469,16 @@ AFRAME.registerComponent("launch-sequence", {
       }
       if (this.hasVideo) {
         this.screenVideo.setAttribute("visible", true);
+        this.screenVideo.setAttribute("material", "transparent", true);
+        this.screenVideo.setAttribute("material", "opacity", 0);
+        this.screenVideo.removeAttribute("animation__fadein");
+        this.screenVideo.setAttribute("animation__fadein", {
+          property: "material.opacity",
+          from: 0,
+          to: 1,
+          dur: 720,
+          easing: "easeOutCubic",
+        });
         this._onVideoEnded = () => this.finish();
         this.video.addEventListener("ended", this._onVideoEnded, { once: true });
       } else {
@@ -434,6 +500,8 @@ AFRAME.registerComponent("launch-sequence", {
 
     clearTimeout(this._revealTimer);
     clearTimeout(this._orbHideTimer);
+    clearTimeout(this._orbCollapseTimer);
+    clearTimeout(this._echoHideTimer);
 
     if (this.video) {
       if (this._onVideoEnded) {
@@ -460,9 +528,17 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.keyLight) this.keyLight.setAttribute("light", "intensity", 0.9);
 
     if (this.orbGroup) {
+      this.orbGroup.removeAttribute("animation__charge");
       this.orbGroup.removeAttribute("animation__out");
       this.orbGroup.setAttribute("scale", "1 1 1");
       this.orbGroup.setAttribute("visible", true);
+    }
+    if (this.orbEcho) {
+      this.orbEcho.removeAttribute("animation__expand");
+      this.orbEcho.removeAttribute("animation__fade");
+      this.orbEcho.setAttribute("visible", false);
+      this.orbEcho.setAttribute("scale", "1 1 1");
+      this.orbEcho.setAttribute("material", "opacity", 0);
     }
 
     if (this.beam) this.beam.setAttribute("visible", false);
@@ -493,6 +569,68 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.12, 0.6, 1200);
     if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.25, 0.9, 1200);
     this.burstParticles(60, "#f2c14e");
+  },
+
+  /* ----- Orb charge, energy release, then disappearance ----- */
+  playOrbTransition() {
+    if (!this.orbGroup) return;
+
+    this.orbGroup.setAttribute("visible", true);
+    this.orbGroup.setAttribute("scale", "1 1 1");
+    this.orbGroup.removeAttribute("animation__charge");
+    this.orbGroup.removeAttribute("animation__out");
+    this.orbGroup.setAttribute("animation__charge", {
+      property: "scale",
+      from: "1 1 1",
+      to: "1.24 1.24 1.24",
+      dur: 380,
+      easing: "easeOutCubic",
+    });
+
+    clearTimeout(this._orbCollapseTimer);
+    this._orbCollapseTimer = setTimeout(() => {
+      this.orbGroup.removeAttribute("animation__charge");
+      this.orbGroup.setAttribute("animation__out", {
+        property: "scale",
+        from: "1.24 1.24 1.24",
+        to: "0.01 0.01 0.01",
+        dur: 520,
+        easing: "easeInBack",
+      });
+
+      if (this.orbEcho) {
+        this.orbEcho.setAttribute("visible", true);
+        this.orbEcho.setAttribute("scale", "0.9 0.9 0.9");
+        this.orbEcho.setAttribute("material", "opacity", 0.7);
+        this.orbEcho.removeAttribute("animation__expand");
+        this.orbEcho.removeAttribute("animation__fade");
+        this.orbEcho.setAttribute("animation__expand", {
+          property: "scale",
+          from: "0.9 0.9 0.9",
+          to: "3.4 3.4 3.4",
+          dur: 690,
+          easing: "easeOutQuart",
+        });
+        this.orbEcho.setAttribute("animation__fade", {
+          property: "material.opacity",
+          from: 0.7,
+          to: 0,
+          dur: 690,
+          easing: "easeInCubic",
+        });
+      }
+
+      this.burstParticles(34, "#9feaff");
+      this.playBeam();
+      this.playRipple();
+    }, 380);
+
+    clearTimeout(this._orbHideTimer);
+    this._orbHideTimer = setTimeout(() => this.orbGroup.setAttribute("visible", false), 940);
+    clearTimeout(this._echoHideTimer);
+    this._echoHideTimer = setTimeout(() => {
+      if (this.orbEcho) this.orbEcho.setAttribute("visible", false);
+    }, 1100);
   },
 
   /* ----- Custom particle burst (no external dependency) ----- */
