@@ -35,66 +35,72 @@ const SFX = (() => {
 
     const now = ac.currentTime;
     const master = ac.createGain();
-    const compressor = ac.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-18, now);
-    compressor.knee.setValueAtTime(18, now);
-    compressor.ratio.setValueAtTime(5, now);
-    master.gain.setValueAtTime(0.0001, now);
-    master.gain.exponentialRampToValueAtTime(0.42, now + 0.06);
-    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.15);
-    master.connect(compressor).connect(ac.destination);
+    const dry = ac.createGain();
+    const wet = ac.createGain();
+    const reverb = ac.createConvolver();
+    const impulse = ac.createBuffer(2, Math.ceil(ac.sampleRate * 1.8), ac.sampleRate);
 
-    // A warm rising foundation gives the cue weight without a harsh impact.
-    const body = ac.createOscillator();
-    const bodyGain = ac.createGain();
-    body.type = "sine";
-    body.frequency.setValueAtTime(110, now);
-    body.frequency.exponentialRampToValueAtTime(220, now + 0.95);
-    bodyGain.gain.setValueAtTime(0.0001, now);
-    bodyGain.gain.exponentialRampToValueAtTime(0.34, now + 0.08);
-    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.35);
-    body.connect(bodyGain).connect(master);
-    body.start(now);
-    body.stop(now + 1.4);
+    for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+      const data = impulse.getChannelData(channel);
+      for (let i = 0; i < data.length; i++) {
+        const decay = Math.pow(1 - i / data.length, 3.4);
+        data[i] = (Math.random() * 2 - 1) * decay;
+      }
+    }
 
-    // Filtered air adds a restrained energy sweep around the orb.
-    const noiseBuffer = ac.createBuffer(1, Math.ceil(ac.sampleRate * 1.35), ac.sampleRate);
-    const noiseData = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
-    const noise = ac.createBufferSource();
-    const filter = ac.createBiquadFilter();
-    const noiseGain = ac.createGain();
-    noise.buffer = noiseBuffer;
-    filter.type = "bandpass";
-    filter.Q.setValueAtTime(1.1, now);
-    filter.frequency.setValueAtTime(280, now);
-    filter.frequency.exponentialRampToValueAtTime(2400, now + 0.95);
-    noiseGain.gain.setValueAtTime(0.0001, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.12, now + 0.28);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.28);
-    noise.connect(filter).connect(noiseGain).connect(master);
-    noise.start(now);
-    noise.stop(now + 1.35);
+    reverb.buffer = impulse;
+    master.gain.setValueAtTime(0.52, now);
+    dry.gain.setValueAtTime(0.78, now);
+    wet.gain.setValueAtTime(0.16, now);
+    master.connect(dry).connect(ac.destination);
+    master.connect(reverb).connect(wet).connect(ac.destination);
 
-    // A suspended major chord supplies the polished ceremonial shimmer.
-    [440, 554.37, 659.25, 880].forEach((frequency, index) => {
-      const osc = ac.createOscillator();
-      const gainNode = ac.createGain();
-      const start = now + 0.42 + index * 0.055;
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(frequency, start);
-      gainNode.gain.setValueAtTime(0.0001, start);
-      gainNode.gain.exponentialRampToValueAtTime(0.11 - index * 0.014, start + 0.035);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, start + 1.3);
-      osc.connect(gainNode).connect(master);
-      osc.start(start);
-      osc.stop(start + 1.35);
+    // Five soft glass notes form an uplifting Cmaj9 motif.
+    [523.25, 659.25, 783.99, 987.77, 1174.66].forEach((frequency, index) => {
+      const start = now + index * 0.075;
+      const duration = 1.35 + index * 0.08;
+      const fundamental = ac.createOscillator();
+      const overtone = ac.createOscillator();
+      const fundamentalGain = ac.createGain();
+      const overtoneGain = ac.createGain();
+
+      fundamental.type = "sine";
+      overtone.type = "sine";
+      fundamental.frequency.setValueAtTime(frequency, start);
+      overtone.frequency.setValueAtTime(frequency * 2.01, start);
+      fundamentalGain.gain.setValueAtTime(0.0001, start);
+      fundamentalGain.gain.exponentialRampToValueAtTime(0.14 - index * 0.012, start + 0.018);
+      fundamentalGain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      overtoneGain.gain.setValueAtTime(0.0001, start);
+      overtoneGain.gain.exponentialRampToValueAtTime(0.035, start + 0.012);
+      overtoneGain.gain.exponentialRampToValueAtTime(0.0001, start + duration * 0.58);
+
+      fundamental.connect(fundamentalGain).connect(master);
+      overtone.connect(overtoneGain).connect(master);
+      fundamental.start(start);
+      overtone.start(start);
+      fundamental.stop(start + duration + 0.03);
+      overtone.stop(start + duration * 0.6);
+    });
+
+    // A very quiet harmonic bed lets the notes resolve smoothly into the film.
+    [261.63, 392, 493.88].forEach((frequency) => {
+      const pad = ac.createOscillator();
+      const padGain = ac.createGain();
+      pad.type = "sine";
+      pad.frequency.setValueAtTime(frequency, now + 0.22);
+      padGain.gain.setValueAtTime(0.0001, now + 0.22);
+      padGain.gain.exponentialRampToValueAtTime(0.026, now + 0.5);
+      padGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.95);
+      pad.connect(padGain).connect(master);
+      pad.start(now + 0.22);
+      pad.stop(now + 2);
     });
   }
 
   return {
     hover() {
-      tone({ freq: 784, dur: 0.11, type: "sine", gain: 0.055 });
+      tone({ freq: 988, dur: 0.09, type: "sine", gain: 0.025 });
     },
     launch() {
       ceremonialLaunch();
@@ -233,6 +239,36 @@ AFRAME.registerComponent("orbit-particles", {
       plane.appendChild(spinner);
       this.el.appendChild(plane);
     }
+  },
+});
+
+/* =============================================================
+   standby-anchor - follow the current wearer until launch, then
+   keep the ceremony fixed in the room for comfortable viewing
+   ============================================================= */
+AFRAME.registerComponent("standby-anchor", {
+  init() {
+    this.camera = null;
+    this.cameraPosition = new THREE.Vector3();
+    this.cameraQuaternion = new THREE.Quaternion();
+    this.anchorQuaternion = new THREE.Quaternion();
+    this.cameraRotation = new THREE.Euler(0, 0, 0, "YXZ");
+    this.up = new THREE.Vector3(0, 1, 0);
+  },
+  tick() {
+    const scene = this.el.sceneEl;
+    if (!scene || scene.is("launched")) return;
+
+    if (!this.camera) this.camera = scene.camera && scene.camera.el;
+    if (!this.camera || !this.camera.object3D) return;
+
+    this.camera.object3D.getWorldPosition(this.cameraPosition);
+    this.camera.object3D.getWorldQuaternion(this.cameraQuaternion);
+    this.cameraRotation.setFromQuaternion(this.cameraQuaternion, "YXZ");
+    this.anchorQuaternion.setFromAxisAngle(this.up, this.cameraRotation.y);
+
+    this.el.object3D.position.copy(this.cameraPosition);
+    this.el.object3D.quaternion.copy(this.anchorQuaternion);
   },
 });
 
@@ -636,7 +672,8 @@ AFRAME.registerComponent("launch-sequence", {
   /* ----- Custom particle burst (no external dependency) ----- */
   burstParticles(count = 48, color = "#9fc2ff") {
     const origin = this.orbGroup || this.el;
-    const originPos = origin.getAttribute("position") || { x: 0, y: 1.35, z: -2.2 };
+    const originPos = new THREE.Vector3(0, 1.35, -2.2);
+    if (origin.object3D) origin.object3D.getWorldPosition(originPos);
 
     for (let i = 0; i < count; i++) {
       const p = document.createElement("a-sphere");
@@ -673,9 +710,13 @@ AFRAME.registerComponent("launch-sequence", {
   /* ----- Light beam shoots up ----- */
   playBeam() {
     if (!this.beam) return;
+    const origin = new THREE.Vector3(0, 1.3, -0.75);
+    if (this.orbGroup && this.orbGroup.object3D) {
+      this.orbGroup.object3D.getWorldPosition(origin);
+    }
     this.beam.setAttribute("visible", true);
     this.beam.setAttribute("height", 0.1);
-    this.beam.setAttribute("position", "0 0 -0.2");
+    this.beam.setAttribute("position", `${origin.x} ${origin.y} ${origin.z}`);
     this.beam.setAttribute("animation__grow", {
       property: "height",
       from: 0.1,
@@ -685,8 +726,8 @@ AFRAME.registerComponent("launch-sequence", {
     });
     this.beam.setAttribute("animation__rise", {
       property: "position",
-      from: "0 0 -0.2",
-      to: "0 9 -0.2",
+      from: `${origin.x} ${origin.y} ${origin.z}`,
+      to: `${origin.x} ${origin.y + 9} ${origin.z}`,
       dur: 800,
       easing: "easeOutQuart",
     });

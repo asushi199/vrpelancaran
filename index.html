@@ -104,12 +104,14 @@
         material="color: #cfe0ff; emissive: #cfe0ff; emissiveIntensity: 2; opacity: 0.5; transparent: true; side: double; fog: false"
       ></a-cylinder>
 
+      <!-- Standby content follows the wearer, then locks in place on launch. -->
+      <a-entity id="ceremonyAnchor" position="0 1.6 0" standby-anchor>
       <!-- ============ FLOATING TITLE (billboarded in front of the leader) ============ -->
       <a-entity
         id="screenLogo"
-        position="0 2.55 -4.8"
-        animation__approach="property: position; from: 0 2.55 -5.25; to: 0 2.55 -4.8; dur: 1800; easing: easeOutCubic"
-        animation__float="property: position; from: 0 2.55 -4.8; to: 0 2.585 -4.8; dir: alternate; loop: true; delay: 1900; dur: 4600; easing: easeInOutSine"
+        position="0 0.95 -4.8"
+        animation__approach="property: position; from: 0 0.95 -5.25; to: 0 0.95 -4.8; dur: 1800; easing: easeOutCubic"
+        animation__float="property: position; from: 0 0.95 -4.8; to: 0 0.985 -4.8; dir: alternate; loop: true; delay: 1900; dur: 4600; easing: easeInOutSine"
       >
         <!-- Black pixels vanish through additive blending, leaving only the cinematic light lettering. -->
         <a-plane
@@ -133,7 +135,7 @@
       </a-entity>
 
       <!-- ============ FLOATING FILM SCREEN (hidden until launch) ============ -->
-      <a-entity id="filmScreen" position="0 1.6 -4.4" visible="false">
+      <a-entity id="filmScreen" position="0 0 -4.4" visible="false">
         <!-- Dark backdrop + thin bezel so it reads as a real screen -->
         <a-plane
           width="6.75"
@@ -176,7 +178,7 @@
       </a-entity>
 
       <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
-      <a-entity id="orbGroup" position="0 1.3 -0.75">
+      <a-entity id="orbGroup" position="0 -0.3 -0.75">
         <a-plane
           width="0.52"
           height="0.52"
@@ -205,12 +207,13 @@
       <!-- Expanding energy echo used only during the launch transition. -->
       <a-plane
         id="orbEcho"
-        position="0 1.3 -0.76"
+        position="0 -0.3 -0.76"
         width="0.52"
         height="0.52"
         visible="false"
         material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0; blending: additive; depthWrite: false; side: double; fog: false"
       ></a-plane>
+      </a-entity>
 
       <!-- ============ CAMERA RIG + CONTROLLERS ============ -->
       <a-entity id="rig" position="0 0 0">
