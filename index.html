@@ -63,7 +63,7 @@
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
-        <a-asset-item id="magicalOrb" src="assets/magical_orb.glb"></a-asset-item>
+        <img id="ceremonialOrbTexture" src="assets/ceremonial-light-orb.png" />
       </a-assets>
 
       <!-- ============ 360 WORLD (wraps the whole audience) ============ -->
@@ -179,20 +179,21 @@
 
       <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
       <a-entity id="orbGroup" position="0 1.35 -1.6">
-        <a-entity
+        <a-plane
+          width="1.7"
+          height="1.7"
+          material="src: #ceremonialOrbTexture; shader: flat; transparent: true; blending: additive; alphaTest: 0.01; side: double; fog: false"
+          animation__pulse="property: scale; dir: alternate; to: 1.06 1.06 1.06; loop: true; dur: 1600; easing: easeInOutSine"
+          animation__turn="property: rotation; dir: alternate; to: 0 0 4; loop: true; dur: 9000; easing: easeInOutSine"
+        ></a-plane>
+        <a-sphere
           id="orb"
           class="clickable"
           launch-button
-          touch-launch="threshold: 0.34"
-          gltf-model="#magicalOrb"
-          gltf-orb-effect
-          scale="0.36 0.36 0.36"
-          animation__float="property: position; dir: alternate; to: 0 0.06 0; loop: true; dur: 1800; easing: easeInOutSine"
-          animation__turn="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear"
-        ></a-entity>
-
-        <!-- Local glow light -->
-        <a-entity light="type: point; color: #caa7ff; intensity: 0.9; distance: 6"></a-entity>
+          touch-launch="threshold: 0.42"
+          radius="0.42"
+          material="color: #000000; opacity: 0.001; transparent: true; depthWrite: false; fog: false"
+        ></a-sphere>
       </a-entity>
 
       <!-- ============ CAMERA RIG + CONTROLLERS ============ -->

@@ -181,40 +181,6 @@ AFRAME.registerComponent("orbit-particles", {
    gltf-orb-effect — play the model's own motion and make its
    metallic shards readable without Sketchfab's studio lighting
    ============================================================= */
-AFRAME.registerComponent("gltf-orb-effect", {
-  init() {
-    this.mixer = null;
-    this.el.addEventListener("model-loaded", (event) => {
-      const model = event.detail.model;
-      model.traverse((node) => {
-        if (!node.isMesh) return;
-        const materials = Array.isArray(node.material) ? node.material : [node.material];
-        materials.forEach((material) => {
-          if (!material) return;
-          if ("metalness" in material) material.metalness = 0.12;
-          if ("roughness" in material) material.roughness = 0.28;
-          if (material.emissive) {
-            material.emissive.set("#1768ff");
-            material.emissiveIntensity = 1.8;
-          }
-          material.needsUpdate = true;
-        });
-      });
-
-      if (model.animations && model.animations.length) {
-        this.mixer = new THREE.AnimationMixer(model);
-        model.animations.forEach((clip) => this.mixer.clipAction(clip).play());
-      }
-    });
-  },
-  tick(time, delta) {
-    if (this.mixer) this.mixer.update(delta / 1000);
-  },
-  remove() {
-    if (this.mixer) this.mixer.stopAllAction();
-  },
-});
-
 /* =============================================================
    touch-launch — launch when a controller or a tracked hand
    physically reaches/touches the orb (in addition to the laser)
