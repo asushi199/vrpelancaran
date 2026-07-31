@@ -249,7 +249,8 @@ AFRAME.registerComponent("orbit-particles", {
 AFRAME.registerComponent("standby-anchor", {
   schema: {
     moveThreshold: { default: 0.42 },
-    stableDuration: { default: 1200 },
+    stableDuration: { default: 800 },
+    interactionDelay: { default: 300 },
   },
   init() {
     this.camera = null;
@@ -265,12 +266,15 @@ AFRAME.registerComponent("standby-anchor", {
     this.stableSince = 0;
     this.relocating = false;
     this.locked = false;
+    this.readyTimer = null;
 
     this.onEnterVR = () => this.beginRelocation();
     this.onExitVR = () => {
+      clearTimeout(this.readyTimer);
       this.relocating = false;
       this.locked = false;
       this.el.setAttribute("visible", true);
+      this.el.sceneEl.addState("standby-ready");
     };
     this.onRecenter = () => this.beginRelocation();
     this.onVisibilityChange = () => {
@@ -302,6 +306,8 @@ AFRAME.registerComponent("standby-anchor", {
   },
   beginRelocation() {
     if (this.el.sceneEl.is("launched")) return;
+    clearTimeout(this.readyTimer);
+    this.el.sceneEl.removeState("standby-ready");
     this.relocating = true;
     this.locked = false;
     this.lastSampleTime = 0;
@@ -325,6 +331,12 @@ AFRAME.registerComponent("standby-anchor", {
       dur: 520,
       easing: "easeOutCubic",
     });
+    clearTimeout(this.readyTimer);
+    this.readyTimer = setTimeout(() => {
+      if (!this.relocating && !this.el.sceneEl.is("launched")) {
+        this.el.sceneEl.addState("standby-ready");
+      }
+    }, this.data.interactionDelay);
   },
   tick(time) {
     const scene = this.el.sceneEl;
@@ -334,6 +346,7 @@ AFRAME.registerComponent("standby-anchor", {
     if (!scene.is("vr-mode")) {
       this.alignToCamera();
       this.el.setAttribute("visible", true);
+      scene.addState("standby-ready");
       return;
     }
 
@@ -378,6 +391,8 @@ AFRAME.registerComponent("standby-anchor", {
     this.lastSampleTime = time;
   },
   remove() {
+    clearTimeout(this.readyTimer);
+    this.el.sceneEl.removeState("standby-ready");
     this.el.sceneEl.removeEventListener("enter-vr", this.onEnterVR);
     this.el.sceneEl.removeEventListener("exit-vr", this.onExitVR);
     this.el.sceneEl.removeEventListener("recenter-standby", this.onRecenter);
@@ -398,6 +413,8 @@ AFRAME.registerComponent("touch-launch", {
     this._o = new THREE.Vector3();
     this._h = new THREE.Vector3();
     this._t = 0;
+    this.armed = false;
+    this.clearSince = 0;
 
     this.resolveInputs = this.resolveInputs.bind(this);
     this.onEnterVR = () => this.resolveInputs();
@@ -425,26 +442,48 @@ AFRAME.registerComponent("touch-launch", {
     }
   },
   tryLaunchAt(position) {
-    if (this.el.sceneEl.is("launched") || !this.el.object3D) return false;
+    const scene = this.el.sceneEl;
+    if (!this.armed || !scene.is("standby-ready") || scene.is("launched")) return false;
+    if (!this.el.object3D) return false;
     this.el.object3D.getWorldPosition(this._o);
     this._h.copy(position);
     if (this._o.distanceTo(this._h) >= this.data.threshold) return false;
-    this.el.sceneEl.emit("launch");
+    scene.emit("launch");
     return true;
+  },
+  isInside(position) {
+    if (!this.el.object3D) return false;
+    this.el.object3D.getWorldPosition(this._o);
+    this._h.copy(position);
+    return this._o.distanceTo(this._h) < this.data.threshold;
   },
   tick(time) {
     // Throttle to ~every 80ms; stop checking once launched
     if (time - this._t < 80) return;
     this._t = time;
-    if (this.el.sceneEl.is("launched")) return;
+    const scene = this.el.sceneEl;
+    if (scene.is("launched")) return;
+
+    if (!scene.is("standby-ready")) {
+      this.armed = false;
+      this.clearSince = 0;
+      return;
+    }
 
     if (!this.controllers.length && !this.trackedHands.length) this.resolveInputs();
+
+    let hasTrackedInput = false;
+    let inputInside = false;
 
     // Bare-hand tracking: test the real index fingertip, not the hand entity origin.
     for (const hand of this.trackedHands) {
       const tracking = hand.components["hand-tracking-controls"];
       if (!tracking || !tracking.hasPoses || !tracking.indexTipPosition) continue;
-      if (this.tryLaunchAt(tracking.indexTipPosition)) return;
+      hasTrackedInput = true;
+      if (this.isInside(tracking.indexTipPosition)) {
+        inputInside = true;
+        if (this.tryLaunchAt(tracking.indexTipPosition)) return;
+      }
     }
 
     // Physical controller proximity remains available as a fallback.
@@ -452,7 +491,22 @@ AFRAME.registerComponent("touch-launch", {
       if (!controller.object3D || !controller.object3D.visible) continue;
       controller.object3D.getWorldPosition(this._h);
       if (this._h.lengthSq() === 0) continue;
-      if (this.tryLaunchAt(this._h)) return;
+      hasTrackedInput = true;
+      if (this.isInside(this._h)) {
+        inputInside = true;
+        if (this.tryLaunchAt(this._h)) return;
+      }
+    }
+
+    // Do not arm while a hand/controller is already inside the hidden collider.
+    // The input must first be observed outside, then deliberately enter the orb.
+    if (!this.armed) {
+      if (hasTrackedInput && !inputInside) {
+        if (!this.clearSince) this.clearSince = time;
+        if (time - this.clearSince >= 240) this.armed = true;
+      } else {
+        this.clearSince = 0;
+      }
     }
   },
   remove() {
@@ -471,6 +525,7 @@ AFRAME.registerComponent("touch-launch", {
 AFRAME.registerComponent("launch-button", {
   init() {
     this.el.addEventListener("mouseenter", () => {
+      if (!this.el.sceneEl.is("standby-ready")) return;
       this.el.setAttribute("material", "emissiveIntensity", 2.6);
       SFX.hover();
     });
@@ -478,6 +533,7 @@ AFRAME.registerComponent("launch-button", {
       this.el.setAttribute("material", "emissiveIntensity", 1.4);
     });
     this.el.addEventListener("click", () => {
+      if (!this.el.sceneEl.is("standby-ready")) return;
       this.el.sceneEl.emit("launch");
     });
   },
@@ -559,6 +615,7 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.fired) return;
     this.fired = true;
     this.el.addState("launched");
+    this.el.removeState("standby-ready");
 
     SFX.launch();
     this.playOrbTransition();
