@@ -3,6 +3,10 @@
    Program Sokongan Profesional: Dasar Pendidikan Digital
    ============================================================= */
 
+const SIMULATE_VR = ["1", "true"].includes(
+  (new URLSearchParams(window.location.search).get("simulateVR") || "").toLowerCase()
+);
+
 /* ---------- Small WebAudio helper (no audio files needed) ---------- */
 const SFX = (() => {
   let ctx = null;
@@ -267,7 +271,8 @@ AFRAME.registerComponent("standby-anchor", {
     this.relocating = false;
     this.locked = false;
     this.readyTimer = null;
-    this.inVR = Boolean(
+    this.simulateVR = SIMULATE_VR;
+    this.inVR = this.simulateVR || Boolean(
       this.el.sceneEl.is("vr-mode") ||
       (this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr.isPresenting)
     );
@@ -278,7 +283,7 @@ AFRAME.registerComponent("standby-anchor", {
     };
     this.onExitVR = () => {
       clearTimeout(this.readyTimer);
-      this.inVR = false;
+      this.inVR = this.simulateVR;
       this.relocating = false;
       this.locked = false;
       this.el.setAttribute("visible", true);
@@ -293,6 +298,7 @@ AFRAME.registerComponent("standby-anchor", {
     this.el.sceneEl.addEventListener("exit-vr", this.onExitVR);
     this.el.sceneEl.addEventListener("recenter-standby", this.onRecenter);
     document.addEventListener("visibilitychange", this.onVisibilityChange);
+    if (this.simulateVR) this.beginRelocation();
   },
   updateCameraPose() {
     const scene = this.el.sceneEl;
@@ -580,6 +586,8 @@ AFRAME.registerComponent("launch-sequence", {
     this.dimmer = scene.querySelector("#dimmer");
     this.v360 = document.getElementById("v360");
     this.hint = document.getElementById("hint");
+    this.simulatorHint = document.getElementById("simulatorHint");
+    if (this.simulatorHint && SIMULATE_VR) this.simulatorHint.hidden = false;
 
     // Detect a missing / unplayable opening film so we can show a placeholder
     if (this.video) {
@@ -600,9 +608,11 @@ AFRAME.registerComponent("launch-sequence", {
     // Hide the operator note the moment we go immersive
     scene.addEventListener("enter-vr", () => {
       if (this.hint) this.hint.style.display = "none";
+      if (this.simulatorHint) this.simulatorHint.hidden = true;
     });
     scene.addEventListener("exit-vr", () => {
       if (this.hint) this.hint.style.display = "";
+      if (this.simulatorHint && SIMULATE_VR) this.simulatorHint.hidden = false;
     });
 
     // Trigger from the orb
