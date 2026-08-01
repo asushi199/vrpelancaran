@@ -7,7 +7,7 @@
 
     <!-- Vendored locally so it also works offline at the venue -->
     <script src="vendor/aframe.min.js"></script>
-    <script src="js/launch.js?v=20260801-hold1" defer></script>
+    <script src="js/launch.js?v=20260801-dissolve1" defer></script>
 
     <style>
       html,
@@ -243,6 +243,9 @@
         material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0; blending: additive; depthWrite: false; side: double; fog: false"
       ></a-plane>
       </a-entity>
+
+      <!-- GPU particle field used when the orb dissolves into the film reveal. -->
+      <a-entity id="launchParticles" orb-dissolve="count: 420; duration: 1320"></a-entity>
 
       <!-- ============ CAMERA RIG + CONTROLLERS ============ -->
       <a-entity id="rig" position="0 0 0">

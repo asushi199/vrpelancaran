@@ -607,6 +607,159 @@ AFRAME.registerComponent("launch-button", {
 });
 
 /* =============================================================
+   orb-dissolve — single-draw-call GPU particles for the launch
+   ============================================================= */
+AFRAME.registerComponent("orb-dissolve", {
+  schema: {
+    count: { default: 420 },
+    duration: { default: 1320 },
+  },
+  init() {
+    const count = this.data.count;
+    const positions = new Float32Array(count * 3);
+    const directions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const phases = new Float32Array(count);
+    const distances = new Float32Array(count);
+    const color = new THREE.Color();
+
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      const z = Math.random() * 2 - 1;
+      const theta = Math.random() * Math.PI * 2;
+      const radial = Math.sqrt(1 - z * z);
+      const shellRadius = 0.035 + Math.pow(Math.random(), 0.5) * 0.22;
+
+      positions[i3] = Math.cos(theta) * radial * shellRadius;
+      positions[i3 + 1] = z * shellRadius;
+      positions[i3 + 2] = Math.sin(theta) * radial * shellRadius * 0.72;
+
+      const dx = Math.cos(theta) * radial + (Math.random() - 0.5) * 0.28;
+      const dy = z * 0.72 + Math.random() * 0.42;
+      const dz = Math.sin(theta) * radial * 0.55 - 0.28 - Math.random() * 0.22;
+      const length = Math.hypot(dx, dy, dz) || 1;
+      directions[i3] = dx / length;
+      directions[i3 + 1] = dy / length;
+      directions[i3 + 2] = dz / length;
+
+      const paletteRoll = Math.random();
+      if (paletteRoll > 0.91) color.set("#f2c76e");
+      else if (paletteRoll > 0.56) color.set("#dffaff");
+      else color.set("#4edcff");
+      colors[i3] = color.r;
+      colors[i3 + 1] = color.g;
+      colors[i3 + 2] = color.b;
+
+      sizes[i] = 0.018 + Math.pow(Math.random(), 1.6) * 0.045;
+      phases[i] = Math.random() * Math.PI * 2;
+      distances[i] = 0.55 + Math.pow(Math.random(), 0.72) * 1.65;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("aDirection", new THREE.BufferAttribute(directions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute("aDistance", new THREE.BufferAttribute(distances, 1));
+
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uProgress: { value: 0 },
+        uOpacity: { value: 0 },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+      },
+      vertexShader: `
+        uniform float uProgress;
+        uniform float uPixelRatio;
+        attribute vec3 aDirection;
+        attribute vec3 color;
+        attribute float aSize;
+        attribute float aPhase;
+        attribute float aDistance;
+        varying vec3 vColor;
+        varying float vEnergy;
+
+        void main() {
+          float eased = 1.0 - pow(1.0 - uProgress, 3.0);
+          float arc = sin(3.14159265 * uProgress);
+          float angle = aPhase + uProgress * (2.4 + aDistance);
+          vec3 transformed = position + aDirection * aDistance * eased;
+          transformed.x += cos(angle) * arc * (0.06 + aDistance * 0.10);
+          transformed.y += sin(angle) * arc * (0.04 + aDistance * 0.065);
+          transformed.y += uProgress * uProgress * (0.08 + aDistance * 0.12);
+
+          vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          gl_PointSize = clamp(aSize * 310.0 * uPixelRatio / max(1.0, -mvPosition.z), 2.0, 14.0);
+          vColor = color;
+          vEnergy = 1.0 - smoothstep(0.18, 1.0, uProgress);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        varying float vEnergy;
+
+        void main() {
+          float distanceToCenter = length(gl_PointCoord - vec2(0.5)) * 2.0;
+          if (distanceToCenter > 1.0) discard;
+          float glow = pow(1.0 - distanceToCenter, 1.7);
+          float core = smoothstep(0.42, 0.0, distanceToCenter);
+          float alpha = (glow * 0.72 + core * 0.5) * uOpacity;
+          gl_FragColor = vec4(vColor * (1.0 + core * 1.8 + vEnergy * 0.35), alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true,
+    });
+
+    this.points = new THREE.Points(geometry, this.material);
+    this.points.frustumCulled = false;
+    this.el.setObject3D("mesh", this.points);
+    this.el.object3D.visible = false;
+    this.active = false;
+    this.elapsed = 0;
+  },
+  start(origin) {
+    if (origin) this.el.object3D.position.copy(origin);
+    this.elapsed = 0;
+    this.active = true;
+    this.material.uniforms.uProgress.value = 0;
+    this.material.uniforms.uOpacity.value = 0;
+    this.el.object3D.visible = true;
+  },
+  reset() {
+    this.active = false;
+    this.elapsed = 0;
+    this.el.object3D.visible = false;
+    this.material.uniforms.uProgress.value = 0;
+    this.material.uniforms.uOpacity.value = 0;
+  },
+  tick(time, delta) {
+    if (!this.active) return;
+    this.elapsed += Math.min(delta || 0, 50);
+    const progress = Math.min(1, this.elapsed / this.data.duration);
+    const fadeIn = Math.min(1, progress / 0.08);
+    const fadeOut = 1 - Math.max(0, (progress - 0.48) / 0.52);
+    this.material.uniforms.uProgress.value = progress;
+    this.material.uniforms.uOpacity.value = fadeIn * fadeOut;
+
+    if (progress >= 1) this.reset();
+  },
+  remove() {
+    if (this.points) {
+      this.points.geometry.dispose();
+      this.points.material.dispose();
+    }
+    this.el.removeObject3D("mesh");
+  },
+});
+
+/* =============================================================
    launch-sequence — the opening ceremony choreography (on <a-scene>)
    ============================================================= */
 AFRAME.registerComponent("launch-sequence", {
@@ -618,6 +771,7 @@ AFRAME.registerComponent("launch-sequence", {
     this.orbGroup = scene.querySelector("#orbGroup");
     this.orbEcho = scene.querySelector("#orbEcho");
     this.orb = scene.querySelector("#orb");
+    this.launchParticles = scene.querySelector("#launchParticles");
     this.screenLogo = scene.querySelector("#screenLogo");
     this.screenVideo = scene.querySelector("#screenVideo");
     this.screenPlaceholder = scene.querySelector("#screenPlaceholder");
@@ -708,9 +862,9 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.6, 0.12, 1200);
     if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.9, 0.25, 1200);
 
-    // The screen appears only after the orb has completed its launch gesture.
+    // The screen emerges while the last particles are fading into the background.
     clearTimeout(this._revealTimer);
-    this._revealTimer = setTimeout(() => this.revealScreen(), 1120);
+    this._revealTimer = setTimeout(() => this.revealScreen(), 980);
   },
 
   setup360() {
@@ -730,13 +884,22 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.screenLogo) this.screenLogo.setAttribute("visible", false);
     if (this.filmScreen) {
       this.filmScreen.setAttribute("visible", true);
-      this.filmScreen.setAttribute("scale", "0.94 0.94 0.94");
+      this.filmScreen.setAttribute("position", "0 0 -4.72");
+      this.filmScreen.setAttribute("scale", "0.86 0.86 0.86");
       this.filmScreen.removeAttribute("animation__reveal");
+      this.filmScreen.removeAttribute("animation__approach");
       this.filmScreen.setAttribute("animation__reveal", {
         property: "scale",
-        from: "0.94 0.94 0.94",
+        from: "0.86 0.86 0.86",
         to: "1 1 1",
-        dur: 760,
+        dur: 920,
+        easing: "easeOutCubic",
+      });
+      this.filmScreen.setAttribute("animation__approach", {
+        property: "position",
+        from: "0 0 -4.72",
+        to: "0 0 -4.4",
+        dur: 920,
         easing: "easeOutCubic",
       });
     }
@@ -758,7 +921,7 @@ AFRAME.registerComponent("launch-sequence", {
           property: "material.opacity",
           from: 0,
           to: 1,
-          dur: 720,
+          dur: 880,
           easing: "easeOutCubic",
         });
         this._onVideoEnded = () => this.finish();
@@ -798,7 +961,13 @@ AFRAME.registerComponent("launch-sequence", {
 
     if (this.screenVideo) this.screenVideo.setAttribute("visible", false);
     if (this.screenPlaceholder) this.screenPlaceholder.setAttribute("visible", false);
-    if (this.filmScreen) this.filmScreen.setAttribute("visible", false);
+    if (this.filmScreen) {
+      this.filmScreen.removeAttribute("animation__reveal");
+      this.filmScreen.removeAttribute("animation__approach");
+      this.filmScreen.setAttribute("position", "0 0 -4.4");
+      this.filmScreen.setAttribute("scale", "1 1 1");
+      this.filmScreen.setAttribute("visible", false);
+    }
     if (this.screenLogo) this.screenLogo.setAttribute("visible", true);
 
     if (this.dimmer) {
@@ -825,6 +994,8 @@ AFRAME.registerComponent("launch-sequence", {
 
     if (this.beam) this.beam.setAttribute("visible", false);
     if (this.ripple) this.ripple.setAttribute("visible", false);
+    const dissolve = this.launchParticles && this.launchParticles.components["orb-dissolve"];
+    if (dissolve) dissolve.reset();
 
     this.fired = false;
     this.el.removeState("launched");
@@ -854,7 +1025,7 @@ AFRAME.registerComponent("launch-sequence", {
     this.burstParticles(60, "#f2c14e");
   },
 
-  /* ----- Orb charge, energy release, then disappearance ----- */
+  /* ----- Orb condenses, dissolves into light, then reveals the film ----- */
   playOrbTransition() {
     if (!this.orbGroup) return;
 
@@ -865,9 +1036,9 @@ AFRAME.registerComponent("launch-sequence", {
     this.orbGroup.setAttribute("animation__charge", {
       property: "scale",
       from: "1 1 1",
-      to: "1.24 1.24 1.24",
-      dur: 380,
-      easing: "easeOutCubic",
+      to: "0.82 0.82 0.82",
+      dur: 180,
+      easing: "easeInCubic",
     });
 
     clearTimeout(this._orbCollapseTimer);
@@ -875,45 +1046,48 @@ AFRAME.registerComponent("launch-sequence", {
       this.orbGroup.removeAttribute("animation__charge");
       this.orbGroup.setAttribute("animation__out", {
         property: "scale",
-        from: "1.24 1.24 1.24",
+        from: "0.82 0.82 0.82",
         to: "0.01 0.01 0.01",
-        dur: 520,
-        easing: "easeInBack",
+        dur: 360,
+        easing: "easeInCubic",
       });
 
       if (this.orbEcho) {
         this.orbEcho.setAttribute("visible", true);
-        this.orbEcho.setAttribute("scale", "0.9 0.9 0.9");
-        this.orbEcho.setAttribute("material", "opacity", 0.7);
+        this.orbEcho.setAttribute("scale", "0.72 0.72 0.72");
+        this.orbEcho.setAttribute("material", "opacity", 0.52);
         this.orbEcho.removeAttribute("animation__expand");
         this.orbEcho.removeAttribute("animation__fade");
         this.orbEcho.setAttribute("animation__expand", {
           property: "scale",
-          from: "0.9 0.9 0.9",
-          to: "3.4 3.4 3.4",
-          dur: 690,
+          from: "0.72 0.72 0.72",
+          to: "2.75 2.75 2.75",
+          dur: 620,
           easing: "easeOutQuart",
         });
         this.orbEcho.setAttribute("animation__fade", {
           property: "material.opacity",
-          from: 0.7,
+          from: 0.52,
           to: 0,
-          dur: 690,
+          dur: 620,
           easing: "easeInCubic",
         });
       }
 
-      this.burstParticles(34, "#9feaff");
-      this.playBeam();
-      this.playRipple();
-    }, 380);
+      const dissolve = this.launchParticles && this.launchParticles.components["orb-dissolve"];
+      if (dissolve) {
+        const origin = new THREE.Vector3();
+        this.orbGroup.object3D.getWorldPosition(origin);
+        dissolve.start(origin);
+      }
+    }, 180);
 
     clearTimeout(this._orbHideTimer);
-    this._orbHideTimer = setTimeout(() => this.orbGroup.setAttribute("visible", false), 940);
+    this._orbHideTimer = setTimeout(() => this.orbGroup.setAttribute("visible", false), 540);
     clearTimeout(this._echoHideTimer);
     this._echoHideTimer = setTimeout(() => {
       if (this.orbEcho) this.orbEcho.setAttribute("visible", false);
-    }, 1100);
+    }, 820);
   },
 
   /* ----- Custom particle burst (no external dependency) ----- */
