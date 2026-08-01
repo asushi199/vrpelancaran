@@ -884,7 +884,7 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.screenLogo) this.screenLogo.setAttribute("visible", false);
     if (this.filmScreen) {
       this.filmScreen.setAttribute("visible", true);
-      this.filmScreen.setAttribute("position", "0 0 -4.72");
+      this.filmScreen.setAttribute("position", "0 0 -6.18");
       this.filmScreen.setAttribute("scale", "0.86 0.86 0.86");
       this.filmScreen.removeAttribute("animation__reveal");
       this.filmScreen.removeAttribute("animation__approach");
@@ -897,8 +897,8 @@ AFRAME.registerComponent("launch-sequence", {
       });
       this.filmScreen.setAttribute("animation__approach", {
         property: "position",
-        from: "0 0 -4.72",
-        to: "0 0 -4.4",
+        from: "0 0 -6.18",
+        to: "0 0 -5.8",
         dur: 920,
         easing: "easeOutCubic",
       });
@@ -964,7 +964,7 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.filmScreen) {
       this.filmScreen.removeAttribute("animation__reveal");
       this.filmScreen.removeAttribute("animation__approach");
-      this.filmScreen.setAttribute("position", "0 0 -4.4");
+      this.filmScreen.setAttribute("position", "0 0 -5.8");
       this.filmScreen.setAttribute("scale", "1 1 1");
       this.filmScreen.setAttribute("visible", false);
     }
