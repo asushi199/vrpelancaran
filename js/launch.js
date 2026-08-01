@@ -170,8 +170,8 @@ function curvedScreenGeometry(radius, height, arc, segments = 72) {
 AFRAME.registerComponent("curved-panel", {
   schema: {
     radius: { default: 5.86 },
-    height: { default: 3.86 },
-    arc: { default: 64.5 },
+    height: { default: 4.36 },
+    arc: { default: 73.5 },
     color: { type: "color", default: "#04060e" },
     opacity: { default: 1 },
   },
@@ -209,8 +209,8 @@ AFRAME.registerComponent("curved-video", {
   schema: {
     src: { type: "selector" },
     radius: { default: 5.8 },
-    height: { default: 3.6 },
-    arc: { default: 63.2 },
+    height: { default: 4.1 },
+    arc: { default: 72 },
     opacity: { default: 0 },
   },
   init() {
