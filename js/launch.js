@@ -271,6 +271,7 @@ AFRAME.registerComponent("standby-anchor", {
     this.relocating = false;
     this.locked = false;
     this.readyTimer = null;
+    this.xrSession = null;
     this.simulateVR = SIMULATE_VR;
     this.inVR = this.simulateVR || Boolean(
       this.el.sceneEl.is("vr-mode") ||
@@ -279,10 +280,12 @@ AFRAME.registerComponent("standby-anchor", {
 
     this.onEnterVR = () => {
       this.inVR = true;
+      this.bindXRSession();
       this.beginRelocation();
     };
     this.onExitVR = () => {
       clearTimeout(this.readyTimer);
+      this.unbindXRSession();
       this.inVR = this.simulateVR;
       this.relocating = false;
       this.locked = false;
@@ -291,7 +294,18 @@ AFRAME.registerComponent("standby-anchor", {
     };
     this.onRecenter = () => this.beginRelocation();
     this.onVisibilityChange = () => {
-      if (!document.hidden && this.inVR) this.beginRelocation();
+      if (document.hidden) {
+        this.lockInteraction();
+      } else if (this.inVR) {
+        this.beginRelocation();
+      }
+    };
+    this.onXRVisibilityChange = () => {
+      if (this.xrSession && this.xrSession.visibilityState === "visible") {
+        this.beginRelocation();
+      } else {
+        this.lockInteraction();
+      }
     };
 
     this.el.sceneEl.addEventListener("enter-vr", this.onEnterVR);
@@ -299,6 +313,27 @@ AFRAME.registerComponent("standby-anchor", {
     this.el.sceneEl.addEventListener("recenter-standby", this.onRecenter);
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     if (this.simulateVR) this.beginRelocation();
+  },
+  lockInteraction() {
+    clearTimeout(this.readyTimer);
+    this.el.sceneEl.removeState("standby-ready");
+    this.el.sceneEl.emit("cancel-launch-hold");
+  },
+  bindXRSession() {
+    this.unbindXRSession();
+    const scene = this.el.sceneEl;
+    this.xrSession =
+      scene.xrSession ||
+      (scene.renderer && scene.renderer.xr.getSession && scene.renderer.xr.getSession());
+    if (this.xrSession) {
+      this.xrSession.addEventListener("visibilitychange", this.onXRVisibilityChange);
+    }
+  },
+  unbindXRSession() {
+    if (this.xrSession) {
+      this.xrSession.removeEventListener("visibilitychange", this.onXRVisibilityChange);
+      this.xrSession = null;
+    }
   },
   updateCameraPose() {
     const scene = this.el.sceneEl;
@@ -320,8 +355,7 @@ AFRAME.registerComponent("standby-anchor", {
   },
   beginRelocation() {
     if (this.el.sceneEl.is("launched")) return;
-    clearTimeout(this.readyTimer);
-    this.el.sceneEl.removeState("standby-ready");
+    this.lockInteraction();
     this.relocating = true;
     this.locked = false;
     this.lastSampleTime = 0;
@@ -360,6 +394,7 @@ AFRAME.registerComponent("standby-anchor", {
     // Trust the WebXR renderer as a second, independent immersive signal.
     if (!this.inVR && scene.renderer && scene.renderer.xr.isPresenting) {
       this.inVR = true;
+      this.bindXRSession();
       this.beginRelocation();
       return;
     }
@@ -414,6 +449,7 @@ AFRAME.registerComponent("standby-anchor", {
   },
   remove() {
     clearTimeout(this.readyTimer);
+    this.unbindXRSession();
     this.el.sceneEl.removeState("standby-ready");
     this.el.sceneEl.removeEventListener("enter-vr", this.onEnterVR);
     this.el.sceneEl.removeEventListener("exit-vr", this.onExitVR);
@@ -427,21 +463,27 @@ AFRAME.registerComponent("standby-anchor", {
    physically reaches/touches the orb (in addition to the laser)
    ============================================================= */
 AFRAME.registerComponent("touch-launch", {
-  schema: { threshold: { default: 0.34 } },
+  schema: {
+    threshold: { default: 0.34 },
+    holdDuration: { default: 600 },
+  },
   init() {
     this.controllers = [];
     this.trackedHands = [];
-    this.pinchHandlers = new Map();
     this._o = new THREE.Vector3();
     this._h = new THREE.Vector3();
     this._t = 0;
     this.armed = false;
     this.clearSince = 0;
+    this.holdSince = 0;
+    this.orbGroup = this.el.sceneEl.querySelector("#orbGroup");
 
     this.resolveInputs = this.resolveInputs.bind(this);
     this.onEnterVR = () => this.resolveInputs();
+    this.cancelHold = () => this.resetHold();
     this.el.sceneEl.addEventListener("loaded", this.resolveInputs, { once: true });
     this.el.sceneEl.addEventListener("enter-vr", this.onEnterVR);
+    this.el.sceneEl.addEventListener("cancel-launch-hold", this.cancelHold);
     this.resolveInputs();
   },
   resolveInputs() {
@@ -452,26 +494,18 @@ AFRAME.registerComponent("touch-launch", {
     this.trackedHands = ["#leftHandTrack", "#rightHandTrack"]
       .map((id) => scene.querySelector(id))
       .filter(Boolean);
-
-    for (const hand of this.trackedHands) {
-      if (this.pinchHandlers.has(hand)) continue;
-      const handler = (event) => {
-        const position = event.detail && event.detail.position;
-        if (position) this.tryLaunchAt(position);
-      };
-      hand.addEventListener("pinchstarted", handler);
-      this.pinchHandlers.set(hand, handler);
+  },
+  resetHold() {
+    this.holdSince = 0;
+    if (this.orbGroup && !this.el.sceneEl.is("launched")) {
+      this.orbGroup.object3D.scale.set(1, 1, 1);
     }
   },
-  tryLaunchAt(position) {
-    const scene = this.el.sceneEl;
-    if (!this.armed || !scene.is("standby-ready") || scene.is("launched")) return false;
-    if (!this.el.object3D) return false;
-    this.el.object3D.getWorldPosition(this._o);
-    this._h.copy(position);
-    if (this._o.distanceTo(this._h) >= this.data.threshold) return false;
-    scene.emit("launch");
-    return true;
+  setHoldProgress(progress) {
+    if (!this.orbGroup) return;
+    const eased = 1 - Math.pow(1 - progress, 2);
+    const scale = 1 + eased * 0.13;
+    this.orbGroup.object3D.scale.set(scale, scale, scale);
   },
   isInside(position) {
     if (!this.el.object3D) return false;
@@ -489,6 +523,7 @@ AFRAME.registerComponent("touch-launch", {
     if (!scene.is("standby-ready")) {
       this.armed = false;
       this.clearSince = 0;
+      this.resetHold();
       return;
     }
 
@@ -504,7 +539,6 @@ AFRAME.registerComponent("touch-launch", {
       hasTrackedInput = true;
       if (this.isInside(tracking.indexTipPosition)) {
         inputInside = true;
-        if (this.tryLaunchAt(tracking.indexTipPosition)) return;
       }
     }
 
@@ -516,28 +550,39 @@ AFRAME.registerComponent("touch-launch", {
       hasTrackedInput = true;
       if (this.isInside(this._h)) {
         inputInside = true;
-        if (this.tryLaunchAt(this._h)) return;
       }
     }
 
     // Do not arm while a hand/controller is already inside the hidden collider.
     // The input must first be observed outside, then deliberately enter the orb.
     if (!this.armed) {
+      this.resetHold();
       if (hasTrackedInput && !inputInside) {
         if (!this.clearSince) this.clearSince = time;
         if (time - this.clearSince >= 240) this.armed = true;
       } else {
         this.clearSince = 0;
       }
+      return;
+    }
+
+    if (!inputInside) {
+      this.resetHold();
+      return;
+    }
+
+    if (!this.holdSince) this.holdSince = time;
+    const progress = Math.min(1, (time - this.holdSince) / this.data.holdDuration);
+    this.setHoldProgress(progress);
+    if (progress >= 1) {
+      scene.emit("launch");
     }
   },
   remove() {
+    this.resetHold();
     this.el.sceneEl.removeEventListener("loaded", this.resolveInputs);
     this.el.sceneEl.removeEventListener("enter-vr", this.onEnterVR);
-    for (const [hand, handler] of this.pinchHandlers) {
-      hand.removeEventListener("pinchstarted", handler);
-    }
-    this.pinchHandlers.clear();
+    this.el.sceneEl.removeEventListener("cancel-launch-hold", this.cancelHold);
   },
 });
 
