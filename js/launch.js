@@ -267,10 +267,18 @@ AFRAME.registerComponent("standby-anchor", {
     this.relocating = false;
     this.locked = false;
     this.readyTimer = null;
+    this.inVR = Boolean(
+      this.el.sceneEl.is("vr-mode") ||
+      (this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr.isPresenting)
+    );
 
-    this.onEnterVR = () => this.beginRelocation();
+    this.onEnterVR = () => {
+      this.inVR = true;
+      this.beginRelocation();
+    };
     this.onExitVR = () => {
       clearTimeout(this.readyTimer);
+      this.inVR = false;
       this.relocating = false;
       this.locked = false;
       this.el.setAttribute("visible", true);
@@ -278,7 +286,7 @@ AFRAME.registerComponent("standby-anchor", {
     };
     this.onRecenter = () => this.beginRelocation();
     this.onVisibilityChange = () => {
-      if (!document.hidden && this.el.sceneEl.is("vr-mode")) this.beginRelocation();
+      if (!document.hidden && this.inVR) this.beginRelocation();
     };
 
     this.el.sceneEl.addEventListener("enter-vr", this.onEnterVR);
@@ -342,8 +350,16 @@ AFRAME.registerComponent("standby-anchor", {
     const scene = this.el.sceneEl;
     if (!scene || scene.is("launched")) return;
 
+    // Quest can begin presenting before its scene state is observable here.
+    // Trust the WebXR renderer as a second, independent immersive signal.
+    if (!this.inVR && scene.renderer && scene.renderer.xr.isPresenting) {
+      this.inVR = true;
+      this.beginRelocation();
+      return;
+    }
+
     // Desktop preview remains centred continuously; immersive VR uses locking.
-    if (!scene.is("vr-mode")) {
+    if (!this.inVR) {
       this.alignToCamera();
       this.el.setAttribute("visible", true);
       scene.addState("standby-ready");
