@@ -7,7 +7,7 @@
 
     <!-- Vendored locally so it also works offline at the venue -->
     <script src="vendor/aframe.min.js"></script>
-    <script src="js/launch.js?v=20260801-dissolve1" defer></script>
+    <script src="js/launch.js?v=20260801-curved1" defer></script>
 
     <style>
       html,
@@ -164,33 +164,24 @@
       </a-entity>
 
       <!-- ============ FLOATING FILM SCREEN (hidden until launch) ============ -->
-      <a-entity id="filmScreen" position="0 0 -5.8" visible="false">
-        <!-- Dark backdrop + thin bezel so it reads as a real screen -->
-        <a-plane
-          width="6.75"
-          height="3.85"
-          position="0 0 -0.04"
-          material="color: #04060e; emissive: #04060e; emissiveIntensity: 0.15; side: double; fog: false"
-        ></a-plane>
-        <a-plane
-          width="6.6"
-          height="3.72"
-          position="0 0 -0.02"
-          material="color: #0a1428; emissive: #0f1d3a; emissiveIntensity: 0.3; metalness: 0.6; roughness: 0.4; side: double; fog: false"
-        ></a-plane>
+      <a-entity id="filmScreen" position="0 0 0" visible="false">
+        <!-- Nested cylindrical surfaces form a restrained curved bezel. -->
+        <a-entity
+          curved-panel="radius: 5.86; height: 3.86; arc: 64.5; color: #04060e"
+        ></a-entity>
+        <a-entity
+          curved-panel="radius: 5.83; height: 3.72; arc: 63.9; color: #0f1d3a"
+        ></a-entity>
 
         <!-- Opening film -->
-        <a-video
+        <a-entity
           id="screenVideo"
-          src="#openingVideo"
-          width="6.4"
-          height="3.6"
-          position="0 0 0.02"
+          curved-video="src: #openingVideo; radius: 5.8; height: 3.6; arc: 63.2; opacity: 0"
           visible="false"
-        ></a-video>
+        ></a-entity>
 
         <!-- Placeholder (shown only if opening.mp4 is missing) -->
-        <a-entity id="screenPlaceholder" visible="false" position="0 0 0.03">
+        <a-entity id="screenPlaceholder" visible="false" position="0 0 -5.77">
           <a-plane
             width="6.4"
             height="3.6"

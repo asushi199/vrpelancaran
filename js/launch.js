@@ -152,6 +152,108 @@ AFRAME.registerComponent("sharp-video", {
   },
 });
 
+function curvedScreenGeometry(radius, height, arc, segments = 72) {
+  const thetaLength = THREE.MathUtils.degToRad(arc);
+  return new THREE.CylinderGeometry(
+    radius,
+    radius,
+    height,
+    segments,
+    1,
+    true,
+    Math.PI - thetaLength / 2,
+    thetaLength
+  );
+}
+
+/* A quiet curved backing surface that follows the video arc. */
+AFRAME.registerComponent("curved-panel", {
+  schema: {
+    radius: { default: 5.86 },
+    height: { default: 3.86 },
+    arc: { default: 64.5 },
+    color: { type: "color", default: "#04060e" },
+    opacity: { default: 1 },
+  },
+  init() {
+    const geometry = curvedScreenGeometry(this.data.radius, this.data.height, this.data.arc);
+    const material = new THREE.MeshBasicMaterial({
+      color: this.data.color,
+      opacity: this.data.opacity,
+      transparent: this.data.opacity < 1,
+      side: THREE.BackSide,
+      depthWrite: true,
+      fog: false,
+    });
+    this.mesh = new THREE.Mesh(geometry, material);
+    this.el.setObject3D("mesh", this.mesh);
+  },
+  update() {
+    if (!this.mesh) return;
+    this.mesh.material.color.set(this.data.color);
+    this.mesh.material.opacity = this.data.opacity;
+    this.mesh.material.transparent = this.data.opacity < 1;
+    this.mesh.material.needsUpdate = true;
+  },
+  remove() {
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.material.dispose();
+    }
+    this.el.removeObject3D("mesh");
+  },
+});
+
+/* A real cylindrical video surface; its UVs are corrected for an inside view. */
+AFRAME.registerComponent("curved-video", {
+  schema: {
+    src: { type: "selector" },
+    radius: { default: 5.8 },
+    height: { default: 3.6 },
+    arc: { default: 63.2 },
+    opacity: { default: 0 },
+  },
+  init() {
+    const video = this.data.src;
+    if (!video) return;
+
+    this.texture = new THREE.VideoTexture(video);
+    this.texture.generateMipmaps = false;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.wrapS = THREE.RepeatWrapping;
+    this.texture.repeat.x = -1;
+    this.texture.offset.x = 1;
+    if (THREE.SRGBColorSpace && "colorSpace" in this.texture) {
+      this.texture.colorSpace = THREE.SRGBColorSpace;
+    }
+
+    const geometry = curvedScreenGeometry(this.data.radius, this.data.height, this.data.arc, 80);
+    const material = new THREE.MeshBasicMaterial({
+      map: this.texture,
+      opacity: this.data.opacity,
+      transparent: true,
+      side: THREE.BackSide,
+      toneMapped: false,
+      fog: false,
+    });
+    this.mesh = new THREE.Mesh(geometry, material);
+    this.el.setObject3D("mesh", this.mesh);
+  },
+  update() {
+    if (!this.mesh) return;
+    this.mesh.material.opacity = this.data.opacity;
+  },
+  remove() {
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.material.dispose();
+    }
+    if (this.texture) this.texture.dispose();
+    this.el.removeObject3D("mesh");
+  },
+});
+
 /* =============================================================
    star-dust — gentle drifting light motes for atmosphere
    ============================================================= */
@@ -674,7 +776,6 @@ AFRAME.registerComponent("orb-dissolve", {
         uniform float uProgress;
         uniform float uPixelRatio;
         attribute vec3 aDirection;
-        attribute vec3 color;
         attribute float aSize;
         attribute float aPhase;
         attribute float aDistance;
@@ -884,21 +985,21 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.screenLogo) this.screenLogo.setAttribute("visible", false);
     if (this.filmScreen) {
       this.filmScreen.setAttribute("visible", true);
-      this.filmScreen.setAttribute("position", "0 0 -6.18");
-      this.filmScreen.setAttribute("scale", "0.86 0.86 0.86");
+      this.filmScreen.setAttribute("position", "0 0 -0.38");
+      this.filmScreen.setAttribute("scale", "0.96 0.96 0.96");
       this.filmScreen.removeAttribute("animation__reveal");
       this.filmScreen.removeAttribute("animation__approach");
       this.filmScreen.setAttribute("animation__reveal", {
         property: "scale",
-        from: "0.86 0.86 0.86",
+        from: "0.96 0.96 0.96",
         to: "1 1 1",
         dur: 920,
         easing: "easeOutCubic",
       });
       this.filmScreen.setAttribute("animation__approach", {
         property: "position",
-        from: "0 0 -6.18",
-        to: "0 0 -5.8",
+        from: "0 0 -0.38",
+        to: "0 0 0",
         dur: 920,
         easing: "easeOutCubic",
       });
@@ -914,11 +1015,10 @@ AFRAME.registerComponent("launch-sequence", {
       }
       if (this.hasVideo) {
         this.screenVideo.setAttribute("visible", true);
-        this.screenVideo.setAttribute("material", "transparent", true);
-        this.screenVideo.setAttribute("material", "opacity", 0);
+        this.screenVideo.setAttribute("curved-video", "opacity", 0);
         this.screenVideo.removeAttribute("animation__fadein");
         this.screenVideo.setAttribute("animation__fadein", {
-          property: "material.opacity",
+          property: "curved-video.opacity",
           from: 0,
           to: 1,
           dur: 880,
@@ -964,7 +1064,7 @@ AFRAME.registerComponent("launch-sequence", {
     if (this.filmScreen) {
       this.filmScreen.removeAttribute("animation__reveal");
       this.filmScreen.removeAttribute("animation__approach");
-      this.filmScreen.setAttribute("position", "0 0 -5.8");
+      this.filmScreen.setAttribute("position", "0 0 0");
       this.filmScreen.setAttribute("scale", "1 1 1");
       this.filmScreen.setAttribute("visible", false);
     }
