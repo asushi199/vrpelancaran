@@ -31,6 +31,12 @@ test("waits to load the VR videos until offline preparation completes", () => {
   assert.match(launch, /offline-media-ready/);
 });
 
+test("pauses the 360 background while the opening film plays, then resumes it", () => {
+  const launch = read("js/launch.js");
+  assert.match(launch, /this\.v360\.pause\(\)[\s\S]*?this\.video\.play\(\)/);
+  assert.match(launch, /finish\(\) \{[\s\S]*?this\.v360\.play\(\)/);
+});
+
 test("service worker caches media and serves MP4 byte ranges", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);

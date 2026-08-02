@@ -1012,11 +1012,21 @@ AFRAME.registerComponent("launch-sequence", {
     }
 
     if (this.hasVideo && this.video) {
+      // Quest Browser is more stable when it only decodes one video texture at a time.
+      if (this.v360) {
+        try {
+          this.v360.pause();
+        } catch (e) {}
+      }
       const p = this.video.play();
       if (p && p.catch) {
         p.catch(() => {
           this.hasVideo = false;
           this.showPlaceholder();
+          if (this.v360) {
+            const backgroundPlay = this.v360.play();
+            if (backgroundPlay && backgroundPlay.catch) backgroundPlay.catch(() => {});
+          }
         });
       }
       if (this.hasVideo) {
@@ -1118,6 +1128,10 @@ AFRAME.registerComponent("launch-sequence", {
 
   finish() {
     // Bring the world back and celebrate
+    if (this.v360) {
+      const p = this.v360.play();
+      if (p && p.catch) p.catch(() => {});
+    }
     if (this.dimmer) {
       this.dimmer.setAttribute("animation__undim", {
         property: "material.opacity",
