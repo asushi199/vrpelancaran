@@ -6,15 +6,26 @@ const test = require("node:test");
 const root = path.join(__dirname, "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-test("shows an operator-controlled offline preparation action", () => {
+test("shows an operator-controlled local media preparation action", () => {
   const html = read("index.html");
-  const offlineMedia = read("js/offline-media.js");
+  const offlineMedia = read("js/local-media.js");
   assert.match(html, /id="prepareOfflineButton"/);
-  assert.match(html, /id="offlineMediaProgress"/);
-  assert.match(html, /src="js\/offline-media\.js/);
-  assert.match(offlineMedia, /loadedBytes/);
-  assert.match(offlineMedia, /totalBytes/);
-  assert.match(offlineMedia, /progressBar\.value/);
+  assert.match(html, /id="space360File"/);
+  assert.match(html, /id="openingFile"/);
+  assert.match(html, /src="js\/local-media\.js/);
+  assert.match(offlineMedia, /URL\.createObjectURL/);
+});
+
+test("plays operator-selected Quest files instead of caching the films in the browser", () => {
+  const html = read("index.html");
+  const offlineMedia = read("js/local-media.js");
+  const launch = read("js/launch.js");
+  assert.match(html, /id="space360File"/);
+  assert.match(html, /id="openingFile"/);
+  assert.doesNotMatch(html, /id="v360"[\s\S]*?src="assets\/space360\.mp4"/);
+  assert.match(offlineMedia, /URL\.createObjectURL/);
+  assert.doesNotMatch(offlineMedia, /offline-media-prepare/);
+  assert.match(launch, /offline-media-ready[\s\S]*?this\.hasVideo = Boolean\(this\.video\?\.src\)/);
 });
 
 test("prevents the ceremony launch before both media files are ready", () => {
@@ -26,8 +37,8 @@ test("prevents the ceremony launch before both media files are ready", () => {
 test("waits to load the VR videos until offline preparation completes", () => {
   const html = read("index.html");
   const launch = read("js/launch.js");
-  assert.match(html, /id="v360"[\s\S]*?preload="metadata"/);
-  assert.match(html, /id="openingVideo"[\s\S]*?preload="metadata"/);
+  assert.match(html, /id="v360"[\s\S]*?preload="none"/);
+  assert.match(html, /id="openingVideo"[\s\S]*?preload="none"/);
   assert.match(launch, /offline-media-ready/);
 });
 
@@ -37,17 +48,13 @@ test("pauses the 360 background while the opening film plays, then resumes it", 
   assert.match(launch, /finish\(\) \{[\s\S]*?this\.v360\.play\(\)/);
 });
 
-test("service worker caches media and serves MP4 byte ranges", () => {
+test("service worker caches only the lightweight app shell", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);
-  assert.match(worker, /cache\.put/);
-  assert.match(worker, /Content-Range/);
-  assert.match(worker, /parseRangeHeader/);
-  assert.match(worker, /MINIMUM_MEDIA_BYTES/);
-  assert.match(worker, /content-length/);
-  assert.match(worker, /body\.tee\(\)/);
-  assert.match(worker, /loadedBytes/);
-  assert.match(worker, /totalBytes/);
+  assert.match(worker, /cache\.addAll\(SHELL_URLS\)/);
+  assert.match(worker, /js\/local-media\.js/);
+  assert.doesNotMatch(worker, /MEDIA_URLS/);
+  assert.doesNotMatch(worker, /arrayBuffer\(\)/);
 });
 
 test("service worker keeps the VR app shell available after the headset goes offline", () => {

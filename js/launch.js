@@ -902,6 +902,10 @@ AFRAME.registerComponent("launch-sequence", {
       this.hasVideo = false;
     }
 
+    window.addEventListener("offline-media-ready", () => {
+      this.hasVideo = Boolean(this.video?.src);
+    });
+
     // Start the 360 environment loop (muted autoplay; retried on VR enter).
     this.setup360();
 
