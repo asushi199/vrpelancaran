@@ -1,7 +1,17 @@
 importScripts("js/offline-media-core.js");
 
-const CACHE_NAME = "vr-pelancaran-media-v1";
+const CACHE_NAME = "vr-pelancaran-media-v2";
 const MINIMUM_MEDIA_BYTES = 1024 * 1024;
+const SHELL_URLS = [
+  "./",
+  "index.html",
+  "js/offline-media-core.js",
+  "js/offline-media.js",
+  "js/launch.js",
+  "vendor/aframe.min.js",
+  "assets/palm-energy-orb.png",
+  "assets/cinematic-title.png",
+].map((path) => new URL(path, self.registration.scope).toString());
 const MEDIA_URLS = ["assets/space360.mp4", "assets/opening.mp4"].map((path) =>
   new URL(path, self.registration.scope).toString()
 );
@@ -14,6 +24,11 @@ async function cacheStatus() {
   const cache = await caches.open(CACHE_NAME);
   const matches = await Promise.all(MEDIA_URLS.map((url) => cache.match(url)));
   return matches.every(Boolean);
+}
+
+async function cacheShell() {
+  const cache = await caches.open(CACHE_NAME);
+  await cache.addAll(SHELL_URLS);
 }
 
 async function cacheMedia(client) {
@@ -61,8 +76,21 @@ async function cachedMediaResponse(request) {
   return new Response(bytes.slice(range.start, range.end + 1), { status: 206, headers });
 }
 
+function shellCacheKey(request) {
+  const url = new URL(request.url);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function cachedShellResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(shellCacheKey(request));
+  return cached || fetch(request);
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(Promise.all([self.skipWaiting(), cacheShell()]));
 });
 
 self.addEventListener("activate", (event) => {
@@ -79,6 +107,13 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || !MEDIA_URLS.includes(event.request.url)) return;
-  event.respondWith(cachedMediaResponse(event.request));
+  if (event.request.method !== "GET") return;
+  if (MEDIA_URLS.includes(event.request.url)) {
+    event.respondWith(cachedMediaResponse(event.request));
+    return;
+  }
+
+  if (SHELL_URLS.includes(shellCacheKey(event.request)) || event.request.mode === "navigate") {
+    event.respondWith(cachedShellResponse(event.request));
+  }
 });

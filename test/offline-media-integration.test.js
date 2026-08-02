@@ -36,6 +36,13 @@ test("service worker caches media and serves MP4 byte ranges", () => {
   assert.match(worker, /content-length/);
 });
 
+test("service worker keeps the VR app shell available after the headset goes offline", () => {
+  const worker = read("service-worker.js");
+  assert.match(worker, /SHELL_URLS/);
+  assert.match(worker, /cache\.addAll\(SHELL_URLS\)/);
+  assert.match(worker, /event\.request\.mode === "navigate"/);
+});
+
 test("Pages deployment publishes the service worker at the site root", () => {
   const workflow = read(".github/workflows/pages.yml");
   assert.match(workflow, /cp index\.html \.nojekyll service-worker\.js _site\//);
