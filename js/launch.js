@@ -939,6 +939,10 @@ AFRAME.registerComponent("launch-sequence", {
 
   launch() {
     if (this.fired) return;
+    if (!window.VROfflineMedia || !window.VROfflineMedia.isReady) {
+      this.el.emit("offline-media-not-ready");
+      return;
+    }
     this.fired = true;
     this.el.addState("launched");
     this.el.removeState("standby-ready");
@@ -971,6 +975,7 @@ AFRAME.registerComponent("launch-sequence", {
   setup360() {
     if (!this.v360) return;
     const play = () => {
+      if (!window.VROfflineMedia || !window.VROfflineMedia.isReady) return;
       const p = this.v360.play();
       if (p && p.catch) p.catch(() => {});
     };
@@ -979,6 +984,7 @@ AFRAME.registerComponent("launch-sequence", {
     else this.el.addEventListener("loaded", play, { once: true });
     this.el.addEventListener("enter-vr", play);
     document.addEventListener("click", play, { once: true });
+    window.addEventListener("offline-media-ready", play, { once: true });
   },
 
   revealScreen() {

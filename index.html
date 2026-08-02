@@ -7,6 +7,7 @@
 
     <!-- Vendored locally so it also works offline at the venue -->
     <script src="vendor/aframe.min.js"></script>
+    <script src="js/offline-media.js?v=20260802-offline1" defer></script>
     <script src="js/launch.js?v=20260801-curved2" defer></script>
 
     <style>
@@ -42,6 +43,54 @@
         pointer-events: none;
       }
 
+      #offlineMediaPanel {
+        position: fixed;
+        z-index: 10000;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%);
+        width: min(440px, calc(100vw - 36px));
+        padding: 16px;
+        border: 1px solid rgba(126, 220, 255, 0.42);
+        border-radius: 12px;
+        background: rgba(3, 10, 24, 0.94);
+        box-shadow: 0 0 28px rgba(56, 183, 255, 0.2);
+        color: #e8f7ff;
+        text-align: center;
+      }
+
+      #offlineMediaPanel[hidden] {
+        display: none;
+      }
+
+      #offlineMediaPanel strong,
+      #offlineMediaStatus {
+        display: block;
+      }
+
+      #offlineMediaStatus {
+        margin: 8px 0 13px;
+        color: #b9d6e5;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      #offlineMediaStatus[data-kind="ready"] { color: #97f5c2; }
+      #offlineMediaStatus[data-kind="error"] { color: #ffd08a; }
+
+      #prepareOfflineButton {
+        border: 1px solid #8ad9ff;
+        border-radius: 6px;
+        padding: 10px 15px;
+        background: #0c4d83;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      #prepareOfflineButton:disabled { opacity: 0.72; }
+
     </style>
   </head>
 
@@ -56,6 +105,12 @@
       MOD UJIAN VR &nbsp;·&nbsp; Seret tetikus: pandang &nbsp;·&nbsp; W/A/S/D: bergerak
       &nbsp;·&nbsp; R: pusat semula &nbsp;·&nbsp; Klik sfera: mula
     </div>
+
+    <section id="offlineMediaPanel" aria-live="polite">
+      <strong>PERSEDIAAN LUAR TALIAN VR</strong>
+      <span id="offlineMediaStatus">Sambungkan Internet, kemudian muat turun kedua-dua filem sebelum majlis.</span>
+      <button id="prepareOfflineButton" type="button">MUAT TURUN FILEM</button>
+    </section>
 
     <a-scene
       launch-sequence
@@ -73,7 +128,7 @@
         <video
           id="v360"
           src="assets/space360.mp4"
-          preload="auto"
+          preload="metadata"
           loop
           muted
           playsinline
@@ -87,7 +142,7 @@
         <video
           id="openingVideo"
           src="assets/opening.mp4"
-          preload="auto"
+          preload="metadata"
           playsinline
           webkit-playsinline
           crossorigin="anonymous"
