@@ -35,3 +35,8 @@ test("service worker caches media and serves MP4 byte ranges", () => {
   assert.match(worker, /MINIMUM_MEDIA_BYTES/);
   assert.match(worker, /content-length/);
 });
+
+test("Pages deployment publishes the service worker at the site root", () => {
+  const workflow = read(".github/workflows/pages.yml");
+  assert.match(workflow, /cp index\.html \.nojekyll service-worker\.js _site\//);
+});
