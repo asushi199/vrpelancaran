@@ -31,20 +31,57 @@ async function cacheShell() {
   await cache.addAll(SHELL_URLS);
 }
 
+function mediaSize(response) {
+  const type = response.headers.get("content-type") || "";
+  const size = Number(response.headers.get("content-length"));
+  if (!response.ok || !type.includes("video") || !Number.isFinite(size) || size < MINIMUM_MEDIA_BYTES) {
+    throw new Error("Fail media tidak tersedia sebagai MP4. Semak penerbitan GitHub Pages.");
+  }
+  return size;
+}
+
+async function mediaManifest() {
+  return Promise.all(
+    MEDIA_URLS.map(async (url) => {
+      const response = await fetch(url, { method: "HEAD", cache: "reload" });
+      return { url, size: mediaSize(response) };
+    })
+  );
+}
+
 async function cacheMedia(client) {
   try {
     const cache = await caches.open(CACHE_NAME);
+    const media = await mediaManifest();
+    const totalBytes = media.reduce((sum, item) => sum + item.size, 0);
+    let loadedBytes = 0;
     let completed = 0;
-    for (const url of MEDIA_URLS) {
-      const response = await fetch(url, { cache: "reload" });
-      const type = response.headers.get("content-type") || "";
-      const size = Number(response.headers.get("content-length"));
-      if (!response.ok || !type.includes("video") || !Number.isFinite(size) || size < MINIMUM_MEDIA_BYTES) {
-        throw new Error("Fail media tidak tersedia sebagai MP4. Semak penerbitan GitHub Pages.");
+    for (const item of media) {
+      const response = await fetch(item.url, { cache: "reload" });
+      const size = mediaSize(response);
+      if (!response.body) throw new Error("Aliran muat turun filem tidak tersedia.");
+
+      const [cacheBody, progressBody] = response.body.tee();
+      const cachePromise = cache.put(
+        item.url,
+        new Response(cacheBody, { status: response.status, statusText: response.statusText, headers: response.headers })
+      );
+      const reader = progressBody.getReader();
+      let fileBytes = 0;
+      let lastReported = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fileBytes += value.byteLength;
+        if (fileBytes - lastReported >= 1024 * 1024 || fileBytes === size) {
+          lastReported = fileBytes;
+          notify(client, { type: "offline-media-progress", completed, loadedBytes: loadedBytes + fileBytes, totalBytes });
+        }
       }
-      await cache.put(url, response.clone());
+      await cachePromise;
+      loadedBytes += fileBytes;
       completed += 1;
-      notify(client, { type: "offline-media-progress", completed });
+      notify(client, { type: "offline-media-progress", completed, loadedBytes, totalBytes });
     }
     notify(client, { type: "offline-media-complete" });
   } catch (error) {

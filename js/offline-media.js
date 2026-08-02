@@ -5,11 +5,31 @@
 
   let prepareButton;
   let statusText;
+  let progressBar;
 
   function setStatus(message, kind) {
     if (!statusText) return;
     statusText.textContent = message;
     statusText.dataset.kind = kind || "";
+  }
+
+  function formatMegabytes(bytes) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function setProgress(loadedBytes, totalBytes, completed) {
+    if (!totalBytes) {
+      if (progressBar) progressBar.value = 0;
+      setStatus("Menyediakan muat turun filem…", "");
+      return;
+    }
+
+    const percent = Math.min(100, Math.round((loadedBytes / totalBytes) * 100));
+    if (progressBar) progressBar.value = percent;
+    setStatus(
+      `Sedang memuat turun ${percent}% (${formatMegabytes(loadedBytes)} / ${formatMegabytes(totalBytes)}). Filem ${Math.min(completed + 1, MEDIA_COUNT)}/${MEDIA_COUNT}.`,
+      ""
+    );
   }
 
   function setReady() {
@@ -18,6 +38,7 @@
       prepareButton.disabled = true;
       prepareButton.textContent = "FILEM SEDIA";
     }
+    if (progressBar) progressBar.value = 100;
     setStatus("Dua-dua filem telah dimuat turun. VR sedia dimulakan.", "ready");
     window.dispatchEvent(new Event("offline-media-ready"));
   }
@@ -33,7 +54,7 @@
 
   async function requestPreparation() {
     if (prepareButton) prepareButton.disabled = true;
-    setStatus("Sedang memuat turun filem 0/2. Kekalkan headset dan halaman ini terbuka.");
+    setProgress(0, 0, 0);
     try {
       const worker = await activeWorker();
       worker.postMessage({ type: "offline-media-prepare" });
@@ -56,7 +77,7 @@
   navigator.serviceWorker?.addEventListener("message", (event) => {
     const message = event.data || {};
     if (message.type === "offline-media-progress") {
-      setStatus(`Sedang memuat turun filem ${message.completed}/${MEDIA_COUNT}. Kekalkan halaman ini terbuka.`);
+      setProgress(message.loadedBytes, message.totalBytes, message.completed);
     }
     if (message.type === "offline-media-status" && message.ready) setReady();
     if (message.type === "offline-media-complete") setReady();
@@ -74,6 +95,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     prepareButton = document.getElementById("prepareOfflineButton");
     statusText = document.getElementById("offlineMediaStatus");
+    progressBar = document.getElementById("offlineMediaProgress");
     prepareButton?.addEventListener("click", requestPreparation);
     requestStatus();
   });

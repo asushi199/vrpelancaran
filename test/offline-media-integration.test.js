@@ -8,8 +8,13 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "u
 
 test("shows an operator-controlled offline preparation action", () => {
   const html = read("index.html");
+  const offlineMedia = read("js/offline-media.js");
   assert.match(html, /id="prepareOfflineButton"/);
+  assert.match(html, /id="offlineMediaProgress"/);
   assert.match(html, /src="js\/offline-media\.js/);
+  assert.match(offlineMedia, /loadedBytes/);
+  assert.match(offlineMedia, /totalBytes/);
+  assert.match(offlineMedia, /progressBar\.value/);
 });
 
 test("prevents the ceremony launch before both media files are ready", () => {
@@ -34,6 +39,9 @@ test("service worker caches media and serves MP4 byte ranges", () => {
   assert.match(worker, /parseRangeHeader/);
   assert.match(worker, /MINIMUM_MEDIA_BYTES/);
   assert.match(worker, /content-length/);
+  assert.match(worker, /body\.tee\(\)/);
+  assert.match(worker, /loadedBytes/);
+  assert.match(worker, /totalBytes/);
 });
 
 test("service worker keeps the VR app shell available after the headset goes offline", () => {
