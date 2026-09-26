@@ -3,19 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Majlis Pelancaran — Program Sokongan Profesional: Dasar Pendidikan Digital</title>
+    <title>Peluncuran PRIME – Jejak Impak</title>
 
     <!-- Vendored locally so it also works offline at the venue -->
     <script src="vendor/aframe.min.js"></script>
+    <script src="js/sky-band.js"></script>
     <script src="js/local-media.js" defer></script>
-    <script src="js/launch.js?v=20260802-local1" defer></script>
+    <script src="js/launch.js?v=20260926-prime9" defer></script>
 
     <style>
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #05060f;
+        background: #040c1b;
         font-family: "Segoe UI", Tahoma, sans-serif;
       }
 
@@ -120,7 +121,7 @@
     <!-- Operator-only note (desktop). Auto-hides once VR starts so it is never
          part of the scene the audience sees. -->
     <div id="hint" hidden>
-      Operator sahaja &nbsp;·&nbsp; SPACE / L = mula &nbsp;·&nbsp; ESC = tutup filem
+      Operator sahaja &nbsp;·&nbsp; SPACE / L = mula &nbsp;·&nbsp; ESC = kembali ke sfera
     </div>
 
     <div id="simulatorHint" hidden>
@@ -129,204 +130,99 @@
     </div>
 
     <section id="offlineMediaPanel" aria-live="polite">
-      <strong>PERSEDIAAN LUAR TALIAN VR</strong>
-      <span id="offlineMediaStatus">Pilih dua filem yang telah disalin ke headset. Fail tidak akan dimuat turun dari Internet.</span>
+      <strong>PERSEDIAAN FILEM DALAM HEADSET</strong>
+      <span id="offlineMediaStatus">Pilih Peluncuran.mp4 yang telah disalin ke headset. Fail tidak akan dimuat turun dari Internet.</span>
       <div id="localMediaFields">
-        <label class="localMediaField">VIDEO 360° LATAR<input id="space360File" type="file" accept="video/mp4,video/*" /></label>
-        <label class="localMediaField">FILEM PEMBUKAAN<input id="openingFile" type="file" accept="video/mp4,video/*" /></label>
+        <label class="localMediaField">FILEM PELUNCURAN<input id="filmFile" type="file" accept="video/mp4,video/*" /></label>
       </div>
       <button id="prepareOfflineButton" type="button" disabled>GUNA FAIL TEMPATAN</button>
     </section>
 
     <a-scene
       launch-sequence
-      background="color: #000005"
+      background="color: #040c1b"
       renderer="colorManagement: true; antialias: true; exposure: 1; toneMapping: no"
-      loading-screen="dotsColor: #d6b06a; backgroundColor: #05060f"
+      loading-screen="dotsColor: #d7a66d; backgroundColor: #040c1b"
     >
       <!-- ============ ASSETS ============ -->
       <a-assets>
         <!--
-          360° IMMERSIVE ENVIRONMENT (equirectangular loop).
-          Swap assets/space360.mp4 for any royalty-free 360 clip you own.
-          Plays muted + looped and wraps fully around the audience.
+          CEREMONY FILM (Peluncuran.mp4), chosen from the Quest's local storage.
+          Muted in the headset: the LED PC plays the same film with sound.
         -->
         <video
-          id="v360"
+          id="openingVideo"
           preload="none"
-          loop
           muted
           playsinline
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
-        <!--
-          OPENING FILM. Drop your file at assets/opening.mp4 (MP4 / H.264).
-          If missing, a placeholder panel is shown automatically.
-        -->
-        <video
-          id="openingVideo"
-          preload="none"
-          playsinline
-          webkit-playsinline
-          crossorigin="anonymous"
-        ></video>
-        <img id="palmOrbTexture" src="assets/palm-energy-orb.png" />
-        <img id="cinematicTitleTexture" src="assets/cinematic-title.png" />
+        <!-- Built by tools/make-assets.sh from the film's first frame -->
+        <img id="orbSprite" src="assets/orb-sprite.png" />
+        <img id="skyTexture" src="assets/sky-galaxy.jpg" />
       </a-assets>
 
-      <!-- ============ 360 WORLD (wraps the whole audience) ============ -->
-      <a-videosphere
-        id="sky360"
-        src="#v360"
-        rotation="0 -90 0"
-        radius="500"
-        segments-height="64"
-        segments-width="64"
-        material="shader: flat; fog: false; npot: true"
-        sharp-video
-      ></a-videosphere>
+      <!-- ============ GALAXY (matches the film's first frame) ============ -->
+      <!-- The sky never moves; its light flows, stars twinkle, meteors pass. -->
+      <a-entity id="sky" sky-yaw>
+        <a-entity galaxy-sky="src: #skyTexture; radius: 400; flow: 0.7; speed: 3"></a-entity>
+        <a-entity galaxy-stars="count: 2600; radius: 350"></a-entity>
+        <a-entity shooting-stars="radius: 300"></a-entity>
+      </a-entity>
 
-      <!-- Dimmer shell: fades in on launch so the film reads cinematically -->
+      <!-- Faint motes drifting around the wearer (fade out when the film starts) -->
+      <a-entity id="spaceDust" space-dust></a-entity>
+
+      <!-- Dimmer shell: darkens the galaxy behind the film screen after launch -->
       <a-sphere
         id="dimmer"
         radius="60"
         material="color: #000005; shader: flat; side: back; opacity: 0; transparent: true; fog: false; depthWrite: false"
       ></a-sphere>
 
-      <!-- ============ LIGHTS (for the floating orb only) ============ -->
-      <a-entity light="type: ambient; color: #22314f; intensity: 0.6"></a-entity>
-      <a-entity
-        id="keyLight"
-        light="type: point; color: #7fb0ff; intensity: 0.9; distance: 12; decay: 1"
-        position="0 3 -1"
-      ></a-entity>
-
-      <!-- ============ LIGHT BEAM (shoots up on launch) ============ -->
-      <a-cylinder
-        id="beam"
-        radius="0.22"
-        height="0.1"
-        position="0 0 -1.6"
-        visible="false"
-        material="color: #cfe0ff; emissive: #cfe0ff; emissiveIntensity: 2; opacity: 0.5; transparent: true; side: double; fog: false"
-      ></a-cylinder>
-
       <!-- Standby content follows the wearer, then locks in place on launch. -->
       <a-entity id="ceremonyAnchor" position="0 1.6 0" standby-anchor>
-      <!-- ============ FLOATING TITLE (billboarded in front of the leader) ============ -->
-      <a-entity
-        id="screenLogo"
-        position="0 0.95 -4.8"
-        animation__approach="property: position; from: 0 0.95 -5.25; to: 0 0.95 -4.8; dur: 1800; easing: easeOutCubic"
-        animation__float="property: position; from: 0 0.95 -4.8; to: 0 0.985 -4.8; dir: alternate; loop: true; delay: 1900; dur: 4600; easing: easeInOutSine"
-      >
-        <!-- Black pixels vanish through additive blending, leaving only the cinematic light lettering. -->
-        <a-plane
-          width="5.7"
-          height="3.18"
-          material="src: #cinematicTitleTexture; shader: flat; transparent: true; opacity: 0.96; blending: additive; depthWrite: false; side: double; fog: false"
-          animation__reveal="property: material.opacity; from: 0; to: 0.96; delay: 120; dur: 1600; easing: easeOutCubic"
-          animation__focus="property: scale; from: 1.025 1.025 1.025; to: 1 1 1; dur: 1800; easing: easeOutCubic"
-        ></a-plane>
+        <!-- ============ FILM SCREEN (hidden until launch) ============ -->
+        <!-- Centre 12° below eye level: comfortable for a 69 s film, and still in view
+             right after the flash while the wearer is looking down at the orb (-22°). -->
+        <a-entity id="filmScreen" rotation="-12 0 0" visible="false">
+          <!-- Nested cylindrical surfaces form a restrained curved bezel. -->
+          <a-entity curved-panel="radius: 5.86; height: 4.36; arc: 73.5; color: #040c1b"></a-entity>
+          <a-entity curved-panel="radius: 5.83; height: 4.22; arc: 72.7; color: #3a2c14"></a-entity>
+          <a-entity
+            id="screenVideo"
+            curved-video="src: #openingVideo; radius: 5.8; height: 4.1; arc: 72; opacity: 0"
+            visible="false"
+          ></a-entity>
+        </a-entity>
 
-        <!-- A restrained second exposure gives the lettering a slow cinematic energy pulse. -->
-        <a-plane
-          width="5.7"
-          height="3.18"
-          position="0 0 -0.012"
-          scale="1.012 1.012 1.012"
-          material="src: #cinematicTitleTexture; shader: flat; transparent: true; opacity: 0.04; blending: additive; depthWrite: false; side: double; fog: false"
-          animation__bloom="property: material.opacity; from: 0.035; to: 0.12; dir: alternate; loop: true; delay: 1800; dur: 3000; easing: easeInOutSine"
-          animation__breathe="property: scale; from: 1.008 1.008 1.008; to: 1.02 1.02 1.02; dir: alternate; loop: true; delay: 1800; dur: 4200; easing: easeInOutSine"
-        ></a-plane>
-      </a-entity>
-
-      <!-- ============ FLOATING FILM SCREEN (hidden until launch) ============ -->
-      <a-entity id="filmScreen" position="0 0 0" visible="false">
-        <!-- Nested cylindrical surfaces form a restrained curved bezel. -->
-        <a-entity
-          curved-panel="radius: 5.86; height: 4.36; arc: 73.5; color: #04060e"
-        ></a-entity>
-        <a-entity
-          curved-panel="radius: 5.83; height: 4.22; arc: 72.7; color: #0f1d3a"
-        ></a-entity>
-
-        <!-- Opening film -->
-        <a-entity
-          id="screenVideo"
-          curved-video="src: #openingVideo; radius: 5.8; height: 4.1; arc: 72; opacity: 0"
-          visible="false"
-        ></a-entity>
-
-        <!-- Placeholder (shown only if opening.mp4 is missing) -->
-        <a-entity id="screenPlaceholder" visible="false" position="0 0 -5.77">
-          <a-plane
-            width="7.28"
-            height="4.1"
-            material="color: #05080f; emissive: #060a14; emissiveIntensity: 0.4; fog: false"
-          ></a-plane>
-          <a-text
-            value="FILEM PEMBUKAAN\n\n(letakkan fail anda di assets/opening.mp4)"
-            align="center"
-            color="#cfe0ff"
-            width="6.4"
-            position="0 0 0.02"
-          ></a-text>
+        <!-- ============ GOLDEN ORB (the touch target) ============ -->
+        <a-entity id="orbGroup" position="0 -0.3 -0.75" ceremony-orb="src: #orbSprite; diameter: 0.38">
+          <a-sphere
+            id="orb"
+            class="clickable"
+            launch-button
+            touch-launch="threshold: 0.24"
+            radius="0.19"
+            material="color: #000000; opacity: 0.001; transparent: true; depthWrite: false; fog: false"
+          ></a-sphere>
         </a-entity>
       </a-entity>
 
-      <!-- ============ FLOATING LAUNCH ORB (the clickable target) ============ -->
-      <a-entity id="orbGroup" position="0 -0.3 -0.75">
-        <a-plane
-          width="0.52"
-          height="0.52"
-          position="0 0 0.01"
-          material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0.95; blending: additive; depthWrite: false; side: double; fog: false"
-          animation__pulse="property: scale; dir: alternate; to: 1.035 1.035 1.035; loop: true; dur: 1500; easing: easeInOutSine"
-          animation__float="property: position; dir: alternate; to: 0 0.035 0.01; loop: true; dur: 2200; easing: easeInOutSine"
-        ></a-plane>
-        <a-plane
-          width="0.58"
-          height="0.58"
-          material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0.16; blending: additive; depthWrite: false; side: double; fog: false"
-          animation__turn="property: rotation; to: 0 0 -360; loop: true; dur: 24000; easing: linear"
-          animation__pulse="property: scale; dir: alternate; to: 1.08 1.08 1.08; loop: true; dur: 2100; easing: easeInOutSine"
-        ></a-plane>
-        <a-sphere
-          id="orb"
-          class="clickable"
-          launch-button
-          touch-launch="threshold: 0.24"
-          radius="0.18"
-          material="color: #000000; opacity: 0.001; transparent: true; depthWrite: false; fog: false"
-        ></a-sphere>
-      </a-entity>
-
-      <!-- Expanding energy echo used only during the launch transition. -->
-      <a-plane
-        id="orbEcho"
-        position="0 -0.3 -0.76"
-        width="0.52"
-        height="0.52"
-        visible="false"
-        material="src: #palmOrbTexture; shader: flat; transparent: true; opacity: 0; blending: additive; depthWrite: false; side: double; fog: false"
-      ></a-plane>
-      </a-entity>
-
-      <!-- GPU particle field used when the orb dissolves into the film reveal. -->
+      <!-- GPU gold particles released as the orb bursts. -->
       <a-entity id="launchParticles" orb-dissolve="count: 420; duration: 1320"></a-entity>
 
       <!-- ============ CAMERA RIG + CONTROLLERS ============ -->
       <a-entity id="rig" position="0 0 0">
         <a-camera position="0 1.6 0" wasd-controls="acceleration: 40" look-controls>
+          <!-- Head-locked white-gold flash covering the cut to the film -->
+          <a-entity id="launchFlash" position="0 0 -0.3" launch-flash></a-entity>
           <!-- Desktop clicks use the real mouse position; VR uses controller rays. -->
           <a-entity
             id="gazeCursor"
             cursor="rayOrigin: mouse; fuse: false"
             raycaster="objects: .clickable; far: 30"
-            material="color: #d6b06a; shader: flat"
-            geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.02"
           ></a-entity>
         </a-camera>
 
@@ -334,12 +230,12 @@
         <a-entity
           id="leftHand"
           laser-controls="hand: left"
-          raycaster="objects: .clickable; far: 30; lineColor: #d6b06a; lineOpacity: 0.9"
+          raycaster="objects: .clickable; far: 30; lineColor: #d7a66d; lineOpacity: 0.9"
         ></a-entity>
         <a-entity
           id="rightHand"
           laser-controls="hand: right"
-          raycaster="objects: .clickable; far: 30; lineColor: #d6b06a; lineOpacity: 0.9"
+          raycaster="objects: .clickable; far: 30; lineColor: #d7a66d; lineOpacity: 0.9"
         ></a-entity>
         <!-- Bare-hand tracking: touching the orb also launches -->
         <a-entity id="leftHandTrack" hand-tracking-controls="hand: left"></a-entity>

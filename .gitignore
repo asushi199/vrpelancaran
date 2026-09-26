@@ -15,3 +15,9 @@ serve.ps1
 .DS_Store
 Thumbs.db
 .vercel
+
+# Intermediate output of tools/make-sky.js
+assets/sky-galaxy.ppm
+
+# Local preview server config
+.claude/

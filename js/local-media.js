@@ -5,8 +5,7 @@
 
   let prepareButton;
   let statusText;
-  let space360Input;
-  let openingInput;
+  let filmInput;
   let objectUrls = [];
 
   function setStatus(message, kind) {
@@ -43,20 +42,18 @@
 
   function updateButton() {
     if (!prepareButton) return;
-    prepareButton.disabled = !(validVideoFile(space360Input?.files[0]) && validVideoFile(openingInput?.files[0]));
+    prepareButton.disabled = !validVideoFile(filmInput?.files[0]);
   }
 
   async function useLocalMedia() {
-    const space360File = space360Input?.files[0];
-    const openingFile = openingInput?.files[0];
-    if (!validVideoFile(space360File) || !validVideoFile(openingFile)) {
-      setStatus("Pilih dua fail MP4 yang betul dahulu.", "error");
+    const filmFile = filmInput?.files[0];
+    if (!validVideoFile(filmFile)) {
+      setStatus("Pilih fail MP4 yang betul dahulu.", "error");
       return;
     }
 
-    const v360 = document.getElementById("v360");
     const openingVideo = document.getElementById("openingVideo");
-    if (!v360 || !openingVideo) {
+    if (!openingVideo) {
       setStatus("Pemain video VR tidak ditemui.", "error");
       return;
     }
@@ -65,10 +62,10 @@
     setStatus("Sedang membuka fail tempatan pada headset…", "");
     releaseObjectUrls();
     try {
-      await Promise.all([setVideoSource(v360, space360File), setVideoSource(openingVideo, openingFile)]);
+      await setVideoSource(openingVideo, filmFile);
       state.isReady = true;
       prepareButton.textContent = "FAIL TEMPATAN SEDIA";
-      setStatus("Dua-dua fail tempatan sedia. VR boleh dimulakan tanpa Internet.", "ready");
+      setStatus("Filem tempatan sedia. VR boleh dimulakan tanpa Internet.", "ready");
       window.dispatchEvent(new Event("offline-media-ready"));
     } catch (error) {
       state.isReady = false;
@@ -77,18 +74,11 @@
     }
   }
 
-  window.addEventListener("offline-media-not-ready", () => {
-    document.getElementById("offlineMediaPanel")?.removeAttribute("hidden");
-    setStatus("Pilih kedua-dua fail tempatan sebelum majlis dimulakan.", "error");
-  });
-
   document.addEventListener("DOMContentLoaded", () => {
     prepareButton = document.getElementById("prepareOfflineButton");
     statusText = document.getElementById("offlineMediaStatus");
-    space360Input = document.getElementById("space360File");
-    openingInput = document.getElementById("openingFile");
-    space360Input?.addEventListener("change", updateButton);
-    openingInput?.addEventListener("change", updateButton);
+    filmInput = document.getElementById("filmFile");
+    filmInput?.addEventListener("change", updateButton);
     prepareButton?.addEventListener("click", useLocalMedia);
   });
 })();

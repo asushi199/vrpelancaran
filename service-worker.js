@@ -1,12 +1,13 @@
-const CACHE_NAME = "vr-pelancaran-shell-v3";
+const CACHE_NAME = "vr-pelancaran-shell-v4";
 const SHELL_URLS = [
   "./",
   "index.html",
+  "js/sky-band.js",
   "js/local-media.js",
   "js/launch.js",
   "vendor/aframe.min.js",
-  "assets/palm-energy-orb.png",
-  "assets/cinematic-title.png",
+  "assets/orb-sprite.png",
+  "assets/sky-galaxy.jpg",
 ].map((path) => new URL(path, self.registration.scope).toString());
 
 async function cacheShell() {

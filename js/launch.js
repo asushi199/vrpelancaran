@@ -1,6 +1,7 @@
 /* =============================================================
-   Pelancaran VR — launch interaction & opening ceremony effects
-   Program Sokongan Profesional: Dasar Pendidikan Digital
+   VR Peluncuran — launch interaction & ceremony effects
+   Peluncuran Buku Himpunan Amalan Terbaik Pengetua & Guru Besar
+   PRIME – Jejak Impak · JPN Perak · 30 September 2026
    ============================================================= */
 
 const SIMULATE_VR = ["1", "true"].includes(
@@ -112,45 +113,58 @@ const SFX = (() => {
   };
 })();
 
-/* ---------- Generic tween helper for numeric attribute props ---------- */
-function tweenProp(el, comp, prop, from, to, dur, done) {
-  const start = performance.now();
-  function step(now) {
-    const t = Math.min(1, (now - start) / dur);
-    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
-    el.setAttribute(comp, prop, from + (to - from) * eased);
-    if (t < 1) requestAnimationFrame(step);
-    else if (done) done();
-  }
-  requestAnimationFrame(step);
+
+/* Rehearsal tuning via URL, e.g. index.html?orbScale=1.15&filmAudio=1
+   orbScale  — orb size multiplier; match the orb on the LED to the film's first frame.
+   filmAudio — play the film's sound in the headset too (default: muted, the LED PC
+               carries the ceremony audio). */
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const ORB_SCALE = Math.min(2, Math.max(0.5, parseFloat(URL_PARAMS.get("orbScale")) || 1));
+const FILM_AUDIO = ["1", "true"].includes((URL_PARAMS.get("filmAudio") || "").toLowerCase());
+
+const easeInQuad = (t) => t * t;
+const easeInCubic = (t) => t * t * t;
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const clamp01 = (t) => Math.min(1, Math.max(0, t));
+
+function srgbTexture(texture) {
+  if (THREE.SRGBColorSpace && "colorSpace" in texture) texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
-/* =============================================================
-   sharp-video — disable mipmaps so 360 video stays crisp
-   ============================================================= */
-AFRAME.registerComponent("sharp-video", {
-  init() {
-    const apply = () => {
-      const mesh = this.el.getObject3D("mesh");
-      if (!mesh || !mesh.material || !mesh.material.map) return false;
-      const tex = mesh.material.map;
-      tex.generateMipmaps = false;
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.needsUpdate = true;
-      mesh.material.needsUpdate = true;
-      return true;
-    };
-    if (!apply()) {
-      this.el.addEventListener("materialtextureloaded", apply);
-      // Video textures may bind a frame later
-      const tryLater = setInterval(() => {
-        if (apply()) clearInterval(tryLater);
-      }, 200);
-      setTimeout(() => clearInterval(tryLater), 8000);
-    }
-  },
-});
+/* Canvas texture helper for soft procedural glows. */
+function canvasTexture(width, height, paint) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  paint(canvas.getContext("2d"), width, height);
+  const texture = srgbTexture(new THREE.CanvasTexture(canvas));
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function additiveMaterial(map, opacity) {
+  return new THREE.MeshBasicMaterial({
+    map,
+    opacity,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+function seededRandom(seed) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 function curvedScreenGeometry(radius, height, arc, segments = 72) {
   const thetaLength = THREE.MathUtils.degToRad(arc);
@@ -255,96 +269,689 @@ AFRAME.registerComponent("curved-video", {
 });
 
 /* =============================================================
-   star-dust — gentle drifting light motes for atmosphere
+   sky-yaw — turn the galaxy with the ceremony anchor, so the Milky
+   Way always crosses behind the orb as it does in the film
    ============================================================= */
-AFRAME.registerComponent("star-dust", {
-  schema: {
-    count: { default: 45 },
-    radius: { default: 14 },
-  },
+AFRAME.registerComponent("sky-yaw", {
   init() {
-    const colors = ["#37b6ff", "#7fd0ff", "#d6ecff", "#2f83ff"];
-    const frag = document.createDocumentFragment();
-    for (let i = 0; i < this.data.count; i++) {
-      const p = document.createElement("a-sphere");
-      const r = 1.5 + Math.random() * this.data.radius;
-      const a = Math.random() * Math.PI * 2;
-      const x = Math.cos(a) * r;
-      const z = Math.sin(a) * r - 4;
-      // Bias particles toward the floor so they read as a rising tech field
-      const y = 0.05 + Math.pow(Math.random(), 1.7) * 6;
-      const col = colors[(Math.random() * colors.length) | 0];
-      p.setAttribute("radius", 0.01 + Math.random() * 0.022);
-      p.setAttribute("segments-width", 5);
-      p.setAttribute("segments-height", 5);
-      p.setAttribute(
-        "material",
-        `color: ${col}; emissive: ${col}; emissiveIntensity: 1.8; opacity: ${0.35 + Math.random() * 0.55}; transparent: true; fog: false`
-      );
-      p.setAttribute("position", `${x} ${y} ${z}`);
-      const dur = 5000 + Math.random() * 8000;
-      p.setAttribute("animation__float", {
-        property: "position",
-        to: `${x} ${y + 1.5 + Math.random() * 2.2} ${z}`,
-        dir: "alternate",
-        loop: true,
-        dur,
-        easing: "easeInOutSine",
-      });
-      p.setAttribute("animation__twinkle", {
-        property: "material.opacity",
-        to: 0.05,
-        dir: "alternate",
-        loop: true,
-        dur: 1200 + Math.random() * 2000,
-        easing: "easeInOutSine",
-      });
-      frag.appendChild(p);
-    }
-    this.el.appendChild(frag);
+    this.onLocked = (event) => {
+      this.el.object3D.rotation.y = event.detail.yaw;
+    };
+    this.el.sceneEl.addEventListener("standby-locked", this.onLocked);
+  },
+  remove() {
+    this.el.sceneEl.removeEventListener("standby-locked", this.onLocked);
   },
 });
 
 /* =============================================================
-   orbit-particles — small energy motes circling the launch core
+   galaxy-stars — crisp twinkling stars as GPU points (the baked sky
+   texture only carries the soft nebula light)
    ============================================================= */
-AFRAME.registerComponent("orbit-particles", {
+AFRAME.registerComponent("galaxy-stars", {
   schema: {
-    count: { default: 6 },
-    radius: { default: 0.46 },
+    count: { default: 2600 },
+    radius: { default: 350 },
+    seed: { default: 20260930 },
   },
   init() {
-    for (let i = 0; i < this.data.count; i++) {
-      // Each mote lives on its own tilted orbital plane, spinning at its own speed
-      const plane = document.createElement("a-entity");
-      const tiltX = Math.random() * 160 - 80;
-      const tiltZ = Math.random() * 160 - 80;
-      plane.setAttribute("rotation", `${tiltX} 0 ${tiltZ}`);
+    const rand = seededRandom(this.data.seed);
+    const count = this.data.count;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const phases = new Float32Array(count);
+    const twinkle = new Float32Array(count);
+    const color = new THREE.Color();
+    const palette = ["#f4f6ff", "#cddcff", "#ffe7c2"];
 
-      const spinner = document.createElement("a-entity");
-      spinner.setAttribute("rotation", `0 ${Math.random() * 360} 0`);
-      spinner.setAttribute("animation", {
-        property: "rotation",
-        to: `0 ${Math.random() * 360 + 360} 0`,
-        loop: true,
-        dur: 2600 + Math.random() * 2600,
-        easing: "linear",
-      });
+    for (let i = 0; i < count; ) {
+      const y = rand() * 2 - 1;
+      const a = rand() * Math.PI * 2;
+      const r = Math.sqrt(1 - y * y);
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      // Denser along the Milky Way, sparse elsewhere.
+      const across = window.SkyBand ? window.SkyBand.coords(x, y, z).across : 1;
+      if (rand() > 0.3 + 0.7 * Math.exp(-Math.pow(across / 0.3, 2))) continue;
 
-      const dot = document.createElement("a-sphere");
-      dot.setAttribute("radius", 0.016 + Math.random() * 0.012);
-      dot.setAttribute("segments-width", 6);
-      dot.setAttribute("segments-height", 6);
-      dot.setAttribute("position", `${this.data.radius} 0 0`);
-      dot.setAttribute(
-        "material",
-        "color: #dff0ff; emissive: #dff0ff; emissiveIntensity: 2.4; fog: false"
-      );
-
-      spinner.appendChild(dot);
-      plane.appendChild(spinner);
-      this.el.appendChild(plane);
+      const i3 = i * 3;
+      positions[i3] = x * this.data.radius;
+      positions[i3 + 1] = y * this.data.radius;
+      positions[i3 + 2] = z * this.data.radius;
+      const roll = rand();
+      color.set(palette[roll > 0.9 ? 2 : roll > 0.6 ? 1 : 0]);
+      colors[i3] = color.r;
+      colors[i3 + 1] = color.g;
+      colors[i3 + 2] = color.b;
+      sizes[i] = 1.1 + Math.pow(rand(), 7) * 3.6;
+      phases[i] = rand() * Math.PI * 2;
+      twinkle[i] = rand() > 0.45 ? 0.6 + rand() * 2.2 : 0;
+      i++;
     }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute("aTwinkle", new THREE.BufferAttribute(twinkle, 1));
+
+    this.material = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uPixelScale: { value: 1 } },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uPixelScale;
+        attribute float aSize;
+        attribute float aPhase;
+        attribute float aTwinkle;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          float size = aSize * uPixelScale;
+          gl_PointSize = max(1.5, size);
+          float flicker = 0.5 + 0.5 * sin(uTime * aTwinkle + aPhase);
+          vAlpha = mix(1.0, flicker, step(0.01, aTwinkle)) * min(1.0, size / 1.5);
+          vColor = color;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+          if (d > 1.0) discard;
+          float glow = pow(1.0 - d, 1.8);
+          gl_FragColor = vec4(vColor, glow * vAlpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true,
+    });
+
+    this.points = new THREE.Points(geometry, this.material);
+    this.points.frustumCulled = false;
+    this.points.renderOrder = -2;
+    this.el.setObject3D("mesh", this.points);
+  },
+  tick(time) {
+    const renderer = this.el.sceneEl.renderer;
+    this.material.uniforms.uTime.value = time / 1000;
+    this.material.uniforms.uPixelScale.value =
+      renderer && renderer.xr.isPresenting ? 1.7 : Math.min(window.devicePixelRatio || 1, 2);
+  },
+  remove() {
+    if (this.points) {
+      this.points.geometry.dispose();
+      this.material.dispose();
+    }
+    this.el.removeObject3D("mesh");
+  },
+});
+
+/* =============================================================
+   galaxy-sky — the baked galaxy texture on an inside-facing sphere,
+   with the Milky Way's light slowly flowing like drifting cloud.
+   The sky itself never moves (moving the whole sky makes VR users
+   feel they are moving); only its brightness is modulated.
+   ============================================================= */
+const SKY_NOISE_GLSL = `
+  float skyHash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float skyNoise(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(skyHash(i), skyHash(i + vec3(1.0, 0.0, 0.0)), f.x),
+          mix(skyHash(i + vec3(0.0, 1.0, 0.0)), skyHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+      mix(mix(skyHash(i + vec3(0.0, 0.0, 1.0)), skyHash(i + vec3(1.0, 0.0, 1.0)), f.x),
+          mix(skyHash(i + vec3(0.0, 1.0, 1.0)), skyHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+      f.z);
+  }
+`;
+
+AFRAME.registerComponent("galaxy-sky", {
+  schema: {
+    src: { type: "selector" },
+    radius: { default: 400 },
+    flow: { default: 0.7 },
+    speed: { default: 3 },
+  },
+  init() {
+    const image = this.data.src;
+    const texture = srgbTexture(new THREE.Texture(image));
+    if (image && image.complete) texture.needsUpdate = true;
+    else if (image) image.addEventListener("load", () => (texture.needsUpdate = true), { once: true });
+
+    this.uniforms = {
+      uTime: { value: 0 },
+      uFlow: { value: this.data.flow },
+      uSpeed: { value: this.data.speed },
+    };
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      side: THREE.BackSide,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    });
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.uniforms.uTime;
+      shader.uniforms.uFlow = this.uniforms.uFlow;
+      shader.uniforms.uSpeed = this.uniforms.uSpeed;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vSkyDir;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSkyDir = normalize(position);");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\nuniform float uTime;\nuniform float uFlow;\nuniform float uSpeed;\nvarying vec3 vSkyDir;\n${SKY_NOISE_GLSL}`)
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          float ft = uTime * uSpeed;
+          vec3 flowPos = vSkyDir * 3.2 + vec3(ft * 0.021, ft * -0.013, ft * 0.009);
+          float n = skyNoise(flowPos) * 0.62 + skyNoise(flowPos * 2.4 + vec3(7.1, -3.3, 1.7) - ft * 0.017) * 0.38;
+          // Only the nebula and Milky Way breathe; the deep blue background stays calm.
+          float lum = dot(diffuseColor.rgb, vec3(0.3, 0.5, 0.2));
+          float mask = smoothstep(0.012, 0.07, lum);
+          diffuseColor.rgb *= 1.0 + (n - 0.5) * uFlow * mask;`
+        );
+    };
+
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(this.data.radius, 64, 32), material);
+    this.mesh.renderOrder = -3;
+    this.mesh.frustumCulled = false;
+    this.el.setObject3D("mesh", this.mesh);
+  },
+  update() {
+    if (!this.uniforms) return;
+    this.uniforms.uFlow.value = this.data.flow;
+    this.uniforms.uSpeed.value = this.data.speed;
+  },
+  tick(time) {
+    this.uniforms.uTime.value = time / 1000;
+  },
+  remove() {
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.material.map.dispose();
+      this.mesh.material.dispose();
+    }
+    this.el.removeObject3D("mesh");
+  },
+});
+
+/* =============================================================
+   shooting-stars — an occasional gold-white meteor, kept away from
+   the orb so it never steals the moment. Paused once launched.
+   ============================================================= */
+AFRAME.registerComponent("shooting-stars", {
+  schema: {
+    radius: { default: 300 },
+    minGap: { default: 5000 },
+    maxGap: { default: 10000 },
+    avoidOrb: { default: 32 },
+  },
+  init() {
+    const texture = canvasTexture(256, 16, (ctx, w, h) => {
+      const pixels = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const vy = Math.exp(-Math.pow((y - h / 2 + 0.5) / (h * 0.2), 2));
+        for (let x = 0; x < w; x++) {
+          const u = x / (w - 1); // 0 = tail, 1 = head
+          const tail = Math.pow(u, 0.45);
+          const head = Math.exp(-Math.pow((1 - u) / 0.035, 2)) * 1.6;
+          const v = Math.min(1, vy * (tail + head));
+          const i = (y * w + x) * 4;
+          pixels.data[i] = 255 * v;
+          pixels.data[i + 1] = 240 * v;
+          pixels.data[i + 2] = 205 * v;
+          pixels.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(pixels, 0, 0);
+    });
+
+    this.meteors = [0, 1].map(() => {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), additiveMaterial(texture, 0));
+      mesh.visible = false;
+      mesh.renderOrder = -2;
+      mesh.frustumCulled = false;
+      this.el.object3D.add(mesh);
+      return {
+        mesh,
+        active: false,
+        start: new THREE.Vector3(),
+        axis: new THREE.Vector3(),
+        born: 0,
+        duration: 1000,
+        travel: 0.25,
+        length: 24,
+      };
+    });
+    this.forward = new THREE.Vector3().fromArray(window.SkyBand ? window.SkyBand.forward : [0, -0.34, -0.94]);
+    this.nextAt = -1;
+    this._pos = new THREE.Vector3();
+    this._dir = new THREE.Vector3();
+    this._x = new THREE.Vector3();
+    this._y = new THREE.Vector3();
+    this._z = new THREE.Vector3();
+    this._m = new THREE.Matrix4();
+  },
+  schedule(time) {
+    this.nextAt = time + this.data.minGap + Math.random() * (this.data.maxGap - this.data.minGap);
+  },
+  spawn(meteor, time) {
+    const DEG = Math.PI / 180;
+    const dir = this._dir;
+    for (let tries = 0; tries < 20; tries++) {
+      // Mostly in front of the wearer (so the LED audience sees them), upper sky.
+      const az = (Math.random() * 2 - 1) * 85 * DEG;
+      const el = (-8 + Math.random() * 58) * DEG;
+      dir.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+      if (dir.angleTo(this.forward) > this.data.avoidOrb * DEG) break;
+    }
+    meteor.start.copy(dir);
+    // Travel direction: a random tangent that heads downward, like a falling star.
+    const tangent = new THREE.Vector3(Math.random() * 2 - 1, -0.6 - Math.random(), Math.random() * 2 - 1);
+    tangent.sub(dir.clone().multiplyScalar(tangent.dot(dir))).normalize();
+    meteor.axis.crossVectors(dir, tangent).normalize();
+    meteor.born = time;
+    meteor.duration = 1000 + Math.random() * 700;
+    meteor.travel = (14 + Math.random() * 10) * DEG;
+    meteor.length = 45 + Math.random() * 35;
+    meteor.active = true;
+    meteor.mesh.visible = true;
+  },
+  tick(time) {
+    const launched = this.el.sceneEl.is("launched");
+    if (this.nextAt < 0) this.schedule(time);
+
+    if (!launched && time >= this.nextAt) {
+      const free = this.meteors.find((m) => !m.active);
+      if (free) this.spawn(free, time);
+      this.schedule(time);
+    }
+
+    for (const meteor of this.meteors) {
+      if (!meteor.active) continue;
+      const p = (time - meteor.born) / meteor.duration;
+      if (p >= 1 || launched) {
+        meteor.active = false;
+        meteor.mesh.visible = false;
+        continue;
+      }
+      // Head position on the sky sphere, and its direction of travel.
+      this._pos.copy(meteor.start).applyAxisAngle(meteor.axis, meteor.travel * p);
+      this._x.crossVectors(meteor.axis, this._pos).normalize();
+      this._z.copy(this._pos).negate();
+      this._y.crossVectors(this._z, this._x);
+      this._m.makeBasis(this._x, this._y, this._z);
+      meteor.mesh.quaternion.setFromRotationMatrix(this._m);
+
+      const grow = Math.min(1, p * 3.2);
+      const len = meteor.length * (0.35 + 0.65 * grow);
+      meteor.mesh.scale.set(len, 3, 1);
+      meteor.mesh.position
+        .copy(this._pos)
+        .multiplyScalar(this.data.radius)
+        .addScaledVector(this._x, -len / 2);
+      meteor.mesh.material.opacity = Math.min(1, p / 0.12) * (1 - Math.pow(p, 2.5)) * 0.85;
+    }
+  },
+  remove() {
+    this.meteors.forEach((m) => {
+      this.el.object3D.remove(m.mesh);
+      m.mesh.geometry.dispose();
+    });
+    if (this.meteors[0]) {
+      this.meteors[0].mesh.material.map.dispose();
+      this.meteors.forEach((m) => m.mesh.material.dispose());
+    }
+  },
+});
+
+/* =============================================================
+   space-dust — faint motes drifting 2–12 m around the wearer for
+   depth in the headset. Random slow drift (no uniform flow, which
+   would feel like travelling). Fades out once the film starts so
+   nothing floats in front of the screen.
+   ============================================================= */
+AFRAME.registerComponent("space-dust", {
+  schema: {
+    count: { default: 900 },
+    extent: { default: 26 },
+  },
+  init() {
+    const rand = seededRandom(7717);
+    const count = this.data.count;
+    const S = this.data.extent;
+    const positions = new Float32Array(count * 3);
+    const velocity = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const phases = new Float32Array(count);
+    const colors = new Float32Array(count * 3);
+    const color = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      positions[i3] = (rand() - 0.5) * S;
+      positions[i3 + 1] = (rand() - 0.5) * S;
+      positions[i3 + 2] = (rand() - 0.5) * S;
+      velocity[i3] = (rand() - 0.5) * 0.26;
+      velocity[i3 + 1] = (rand() - 0.5) * 0.14 + 0.03;
+      velocity[i3 + 2] = (rand() - 0.5) * 0.26;
+      sizes[i] = 0.035 + Math.pow(rand(), 3) * 0.06;
+      phases[i] = rand() * Math.PI * 2;
+      color.set(rand() > 0.65 ? "#fcecc6" : "#cddcff");
+      colors[i3] = color.r;
+      colors[i3 + 1] = color.g;
+      colors[i3 + 2] = color.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("aVelocity", new THREE.BufferAttribute(velocity, 3));
+    geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+    this.opacity = 1;
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 1 },
+        uFocal: { value: 900 },
+        uExtent: { value: S },
+        uCenter: { value: new THREE.Vector3() },
+      },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uFocal;
+        uniform float uExtent;
+        uniform vec3 uCenter;
+        attribute vec3 aVelocity;
+        attribute float aSize;
+        attribute float aPhase;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          // Wrap each mote inside a box that travels with the wearer.
+          vec3 local = mod(position + aVelocity * uTime - uCenter + uExtent * 0.5, uExtent) - uExtent * 0.5;
+          vec3 world = uCenter + local;
+          vec4 mvPosition = viewMatrix * vec4(world, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          float dist = length(local);
+          gl_PointSize = clamp(aSize * uFocal / max(0.1, -mvPosition.z), 1.0, 6.0);
+          float band = smoothstep(2.0, 4.0, dist) * (1.0 - smoothstep(9.0, 12.5, dist));
+          vAlpha = band * (0.55 + 0.4 * sin(uTime * 0.9 + aPhase));
+          vColor = color;
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+          if (d > 1.0) discard;
+          gl_FragColor = vec4(vColor, pow(1.0 - d, 1.6) * vAlpha * uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true,
+    });
+    this.points = new THREE.Points(geometry, this.material);
+    this.points.frustumCulled = false;
+    this.el.setObject3D("mesh", this.points);
+  },
+  tick(time, delta) {
+    const scene = this.el.sceneEl;
+    const u = this.material.uniforms;
+    u.uTime.value = time / 1000;
+    if (scene.camera) scene.camera.getWorldPosition(u.uCenter.value);
+    const renderer = scene.renderer;
+    u.uFocal.value = renderer && renderer.xr.isPresenting ? 1100 : 900;
+    const target = scene.is("launched") ? 0 : 1;
+    const step = Math.min(1, (delta || 16) / 400);
+    this.opacity += (target - this.opacity) * step;
+    u.uOpacity.value = this.opacity;
+    this.points.visible = this.opacity > 0.01;
+  },
+  remove() {
+    if (this.points) {
+      this.points.geometry.dispose();
+      this.material.dispose();
+    }
+    this.el.removeObject3D("mesh");
+  },
+});
+
+/* =============================================================
+   ceremony-orb — the golden crystal orb, matched to the first frame
+   of Peluncuran.mp4: the orb cut from that frame (billboarded,
+   additive), a horizontal lens streak, a breathing core, and gold
+   motes swirling inside the glass for depth in the headset
+   ============================================================= */
+// Glass shell diameter as a fraction of orb-sprite.png's width (340px of 768px).
+const ORB_SHELL_FRACTION = 340 / 768;
+
+AFRAME.registerComponent("ceremony-orb", {
+  schema: {
+    src: { type: "selector" },
+    diameter: { default: 0.38 },
+    motes: { default: 260 },
+  },
+  init() {
+    const D = this.data.diameter;
+    this.boost = 0;
+    this.cameraPosition = new THREE.Vector3();
+    this.billboard = new THREE.Group();
+    this.el.object3D.add(this.billboard);
+
+    const image = this.data.src;
+    const spriteTexture = srgbTexture(new THREE.Texture(image));
+    if (image && image.complete) spriteTexture.needsUpdate = true;
+    else if (image) image.addEventListener("load", () => (spriteTexture.needsUpdate = true), { once: true });
+    const spriteSize = D / ORB_SHELL_FRACTION;
+    this.sprite = new THREE.Mesh(new THREE.PlaneGeometry(spriteSize, spriteSize), additiveMaterial(spriteTexture, 1));
+    this.billboard.add(this.sprite);
+
+    const streakTexture = canvasTexture(1024, 64, (ctx, w, h) => {
+      const pixels = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const vy = Math.exp(-Math.pow((y - h / 2 + 0.5) / (h * 0.09), 2));
+        for (let x = 0; x < w; x++) {
+          const u = Math.abs(x - w / 2 + 0.5) / (w / 2);
+          const v = vy * (0.75 * Math.exp(-u * 4.2) + 0.25 * Math.exp(-u * 1.3)) * (1 - u);
+          const i = (y * w + x) * 4;
+          pixels.data[i] = 255 * v;
+          pixels.data[i + 1] = 222 * v;
+          pixels.data[i + 2] = 160 * v;
+          pixels.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(pixels, 0, 0);
+    });
+    this.streak = new THREE.Mesh(new THREE.PlaneGeometry(D * 5.2, D * 0.1), additiveMaterial(streakTexture, 0.5));
+    this.streak.position.z = 0.002;
+    this.billboard.add(this.streak);
+
+    const coreTexture = canvasTexture(256, 256, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      g.addColorStop(0, "rgba(252,251,241,1)");
+      g.addColorStop(0.25, "rgba(252,236,198,0.75)");
+      g.addColorStop(0.6, "rgba(215,166,109,0.22)");
+      g.addColorStop(1, "rgba(215,166,109,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+    this.core = new THREE.Mesh(new THREE.PlaneGeometry(D * 0.7, D * 0.7), additiveMaterial(coreTexture, 0.25));
+    this.core.position.z = 0.004;
+    this.billboard.add(this.core);
+
+    this.motes = this.createMotes(D);
+    this.el.object3D.add(this.motes);
+  },
+  createMotes(D) {
+    const rand = seededRandom(3303);
+    const count = this.data.motes;
+    const radius = new Float32Array(count);
+    const theta = new Float32Array(count);
+    const height = new Float32Array(count);
+    const speed = new Float32Array(count);
+    const sizes = new Float32Array(count);
+    const phases = new Float32Array(count);
+    const colors = new Float32Array(count * 3);
+    const color = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const r = D * 0.44 * Math.pow(rand(), 0.55);
+      const lat = Math.asin(rand() * 2 - 1);
+      radius[i] = r * Math.cos(lat);
+      height[i] = r * Math.sin(lat);
+      theta[i] = rand() * Math.PI * 2;
+      // Inner motes orbit faster, like the swirl in the film.
+      speed[i] = (0.25 + rand() * 0.35) * (1.4 - r / (D * 0.44));
+      sizes[i] = 0.0016 + Math.pow(rand(), 3) * 0.0034;
+      phases[i] = rand() * Math.PI * 2;
+      color.set(rand() > 0.55 ? "#fcecc6" : "#d7a66d");
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+    geometry.setAttribute("aRadius", new THREE.BufferAttribute(radius, 1));
+    geometry.setAttribute("aTheta", new THREE.BufferAttribute(theta, 1));
+    geometry.setAttribute("aHeight", new THREE.BufferAttribute(height, 1));
+    geometry.setAttribute("aSpeed", new THREE.BufferAttribute(speed, 1));
+    geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+    this.moteMaterial = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uBoost: { value: 0 }, uFocal: { value: 900 } },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uFocal;
+        attribute float aRadius;
+        attribute float aTheta;
+        attribute float aHeight;
+        attribute float aSpeed;
+        attribute float aSize;
+        attribute float aPhase;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          float angle = aTheta + uTime * aSpeed;
+          vec3 p = vec3(cos(angle) * aRadius, aHeight + sin(uTime * 0.6 + aPhase) * 0.004, sin(angle) * aRadius);
+          vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          gl_PointSize = clamp(aSize * uFocal / max(0.05, -mvPosition.z), 1.0, 7.0);
+          vAlpha = 0.45 + 0.55 * (0.5 + 0.5 * sin(uTime * 2.1 + aPhase * 3.0));
+          vColor = color;
+        }
+      `,
+      fragmentShader: `
+        uniform float uBoost;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+          if (d > 1.0) discard;
+          float glow = pow(1.0 - d, 1.6);
+          gl_FragColor = vec4(vColor * (1.0 + uBoost), glow * vAlpha * 0.8);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true,
+    });
+    const points = new THREE.Points(geometry, this.moteMaterial);
+    points.frustumCulled = false;
+    return points;
+  },
+  /* 0 = idle; rises toward ~1.5 while the orb swells on launch. */
+  setBoost(boost) {
+    this.boost = boost;
+  },
+  tick(time) {
+    const t = time / 1000;
+    const camera = this.el.sceneEl.camera;
+    if (camera) {
+      camera.getWorldPosition(this.cameraPosition);
+      this.billboard.lookAt(this.cameraPosition);
+    }
+    const b = this.boost;
+    this.sprite.material.color.setScalar(1 + b * 0.8);
+    this.core.material.opacity = 0.22 + 0.07 * Math.sin(t * 1.15) + b * 0.6;
+    this.core.scale.setScalar(1 + 0.04 * Math.sin(t * 1.15) + b * 0.5);
+    this.streak.material.opacity = 0.46 + 0.06 * Math.sin(t * 0.8 + 1.3) + b * 0.5;
+    this.moteMaterial.uniforms.uTime.value = t;
+    this.moteMaterial.uniforms.uBoost.value = b;
+    const renderer = this.el.sceneEl.renderer;
+    this.moteMaterial.uniforms.uFocal.value = renderer && renderer.xr.isPresenting ? 1100 : 900;
+  },
+  remove() {
+    this.el.object3D.remove(this.billboard);
+    this.el.object3D.remove(this.motes);
+    [this.sprite, this.streak, this.core].forEach((mesh) => {
+      mesh.geometry.dispose();
+      if (mesh.material.map) mesh.material.map.dispose();
+      mesh.material.dispose();
+    });
+    this.motes.geometry.dispose();
+    this.moteMaterial.dispose();
+  },
+});
+
+/* =============================================================
+   launch-flash — head-locked white-gold flash that hides the cut
+   from the orb to the film (and cues the LED operator)
+   ============================================================= */
+AFRAME.registerComponent("launch-flash", {
+  init() {
+    const texture = canvasTexture(256, 256, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.72);
+      g.addColorStop(0, "#fffcf2");
+      g.addColorStop(0.45, "#fdf0cf");
+      g.addColorStop(1, "#f0c878");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+    this.mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, 1.6),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+        fog: false,
+      })
+    );
+    this.mesh.renderOrder = 1000;
+    this.mesh.visible = false;
+    this.el.setObject3D("mesh", this.mesh);
+  },
+  setOpacity(opacity) {
+    this.mesh.material.opacity = opacity;
+    this.mesh.visible = opacity > 0.001;
+  },
+  remove() {
+    this.mesh.geometry.dispose();
+    this.mesh.material.map.dispose();
+    this.mesh.material.dispose();
+    this.el.removeObject3D("mesh");
   },
 });
 
@@ -471,6 +1078,7 @@ AFRAME.registerComponent("standby-anchor", {
     this.lockedCameraPosition.copy(this.cameraPosition);
     this.relocating = false;
     this.locked = true;
+    this.el.sceneEl.emit("standby-locked", { yaw: this.cameraRotation.y });
     this.el.setAttribute("visible", true);
     this.el.setAttribute("scale", "0.965 0.965 0.965");
     this.el.removeAttribute("animation__settle");
@@ -600,20 +1208,19 @@ AFRAME.registerComponent("touch-launch", {
   resetHold() {
     this.holdSince = 0;
     if (this.orbGroup && !this.el.sceneEl.is("launched")) {
-      this.orbGroup.object3D.scale.set(1, 1, 1);
+      this.orbGroup.object3D.scale.setScalar(ORB_SCALE);
     }
   },
   setHoldProgress(progress) {
     if (!this.orbGroup) return;
     const eased = 1 - Math.pow(1 - progress, 2);
-    const scale = 1 + eased * 0.13;
-    this.orbGroup.object3D.scale.set(scale, scale, scale);
+    this.orbGroup.object3D.scale.setScalar(ORB_SCALE * (1 + eased * 0.13));
   },
   isInside(position) {
     if (!this.el.object3D) return false;
     this.el.object3D.getWorldPosition(this._o);
     this._h.copy(position);
-    return this._o.distanceTo(this._h) < this.data.threshold;
+    return this._o.distanceTo(this._h) < this.data.threshold * ORB_SCALE;
   },
   tick(time) {
     // Throttle to ~every 80ms; stop checking once launched
@@ -695,11 +1302,7 @@ AFRAME.registerComponent("launch-button", {
   init() {
     this.el.addEventListener("mouseenter", () => {
       if (!this.el.sceneEl.is("standby-ready")) return;
-      this.el.setAttribute("material", "emissiveIntensity", 2.6);
       SFX.hover();
-    });
-    this.el.addEventListener("mouseleave", () => {
-      this.el.setAttribute("material", "emissiveIntensity", 1.4);
     });
     this.el.addEventListener("click", () => {
       if (!this.el.sceneEl.is("standby-ready")) return;
@@ -746,9 +1349,9 @@ AFRAME.registerComponent("orb-dissolve", {
       directions[i3 + 2] = dz / length;
 
       const paletteRoll = Math.random();
-      if (paletteRoll > 0.91) color.set("#f2c76e");
-      else if (paletteRoll > 0.56) color.set("#dffaff");
-      else color.set("#4edcff");
+      if (paletteRoll > 0.82) color.set("#fcfbf1");
+      else if (paletteRoll > 0.42) color.set("#fcecc6");
+      else color.set("#d7a66d");
       colors[i3] = color.r;
       colors[i3 + 1] = color.g;
       colors[i3 + 2] = color.b;
@@ -861,55 +1464,56 @@ AFRAME.registerComponent("orb-dissolve", {
 });
 
 /* =============================================================
-   launch-sequence — the opening ceremony choreography (on <a-scene>)
+   launch-sequence — the ceremony choreography (on <a-scene>)
+
+   Timeline after the orb is touched (ms):
+     0–300     orb swells and brightens, gold motes burst outward
+     60–300    white-gold flash rises to full (the LED operator's cue)
+     300       behind the flash: orb hidden, sky dimmed, film screen shown
+     420–1120  flash fades, revealing Peluncuran.mp4 in the headset
+   Everything is driven from tick(): window.requestAnimationFrame does not
+   run while the Quest is presenting an immersive session.
    ============================================================= */
+const LAUNCH_TIMING = {
+  swell: 300,
+  flashStart: 60,
+  cut: 300,
+  flashHoldUntil: 420,
+  flashFade: 700,
+};
+
 AFRAME.registerComponent("launch-sequence", {
   init() {
     this.fired = false;
-    this.hasVideo = true;
+    this.launchedAt = -1;
+    this.cutDone = false;
+    this.hasVideo = false;
 
     const scene = this.el;
+    this.anchorEl = scene.querySelector("#ceremonyAnchor");
     this.orbGroup = scene.querySelector("#orbGroup");
-    this.orbEcho = scene.querySelector("#orbEcho");
-    this.orb = scene.querySelector("#orb");
     this.launchParticles = scene.querySelector("#launchParticles");
-    this.screenLogo = scene.querySelector("#screenLogo");
+    this.flashEl = scene.querySelector("#launchFlash");
     this.screenVideo = scene.querySelector("#screenVideo");
-    this.screenPlaceholder = scene.querySelector("#screenPlaceholder");
-    this.placeholderText = this.screenPlaceholder;
-    this.beam = scene.querySelector("#beam");
-    this.ripple = scene.querySelector("#ripple");
-    this.ambient = scene.querySelector("[light*='ambient']");
-    this.keyLight = scene.querySelector("#keyLight");
-    this.video = document.getElementById("openingVideo");
     this.filmScreen = scene.querySelector("#filmScreen");
     this.dimmer = scene.querySelector("#dimmer");
-    this.v360 = document.getElementById("v360");
+    this.video = document.getElementById("openingVideo");
     this.hint = document.getElementById("hint");
     this.simulatorHint = document.getElementById("simulatorHint");
     if (this.simulatorHint && SIMULATE_VR) this.simulatorHint.hidden = false;
+    if (this.orbGroup) this.orbGroup.object3D.scale.setScalar(ORB_SCALE);
 
-    // Detect a missing / unplayable opening film so we can show a placeholder
     if (this.video) {
+      this.video.muted = !FILM_AUDIO;
       this.video.addEventListener("error", () => {
         this.hasVideo = false;
       });
-      // 404 shows up as an error; give the browser a moment to attempt load
-      if (this.video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
-        this.hasVideo = false;
-      }
-    } else {
-      this.hasVideo = false;
     }
-
     window.addEventListener("offline-media-ready", () => {
       this.hasVideo = Boolean(this.video?.src);
     });
 
-    // Start the 360 environment loop (muted autoplay; retried on VR enter).
-    this.setup360();
-
-    // Hide the operator note the moment we go immersive
+    // Hide the operator notes the moment we go immersive
     scene.addEventListener("enter-vr", () => {
       if (this.hint) this.hint.style.display = "none";
       if (this.simulatorHint) this.simulatorHint.hidden = true;
@@ -922,7 +1526,7 @@ AFRAME.registerComponent("launch-sequence", {
     // Trigger from the orb
     scene.addEventListener("launch", () => this.launch());
 
-    // Operator keys: Space/L launch, Esc close film & return to idle
+    // Operator keys: Space/L launch, Esc return to the orb, R re-centre
     window.addEventListener("keydown", (e) => {
       if (e.code === "Escape") {
         e.preventDefault();
@@ -941,371 +1545,144 @@ AFRAME.registerComponent("launch-sequence", {
     });
   },
 
+  orb() {
+    return this.orbGroup && this.orbGroup.components["ceremony-orb"];
+  },
+
+  flash(opacity) {
+    const flash = this.flashEl && this.flashEl.components["launch-flash"];
+    if (flash) flash.setOpacity(opacity);
+  },
+
+  /* The film is optional in the headset: the LED PC plays the ceremony film,
+     so the orb always launches even if no local file was chosen. */
   launch() {
     if (this.fired) return;
-    if (!window.VROfflineMedia || !window.VROfflineMedia.isReady) {
-      this.el.emit("offline-media-not-ready");
-      return;
-    }
+    // An operator key can launch while the anchor is still re-centring (hidden).
+    // Lock it where the wearer is looking now, or the film screen inside it stays
+    // hidden: the anchor stops updating once launched.
+    const anchor = this.anchorEl && this.anchorEl.components["standby-anchor"];
+    if (anchor && !anchor.locked) anchor.lockAtCurrentPose();
+
     this.fired = true;
+    this.cutDone = false;
+    this.launchedAt = -1;
     this.el.addState("launched");
     this.el.removeState("standby-ready");
-
-    SFX.launch();
-    this.playOrbTransition();
-
     if (this.hint) this.hint.style.display = "none";
 
-    // Dim the surrounding 360 so the film reads cinematically
-    if (this.dimmer) {
-      this.dimmer.removeAttribute("animation__dim");
-      this.dimmer.removeAttribute("animation__undim");
-      this.dimmer.setAttribute("animation__dim", {
-        property: "material.opacity",
-        to: 0.78,
-        delay: 420,
-        dur: 780,
-        easing: "easeInOutSine",
-      });
-    }
-    if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.6, 0.12, 1200);
-    if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.9, 0.25, 1200);
+    SFX.launch();
 
-    // The screen emerges while the last particles are fading into the background.
-    clearTimeout(this._revealTimer);
-    this._revealTimer = setTimeout(() => this.revealScreen(), 980);
-  },
-
-  setup360() {
-    if (!this.v360) return;
-    const play = () => {
-      if (!window.VROfflineMedia || !window.VROfflineMedia.isReady) return;
-      const p = this.v360.play();
-      if (p && p.catch) p.catch(() => {});
-    };
-    // Try once the scene is ready, and again on first VR enter (gesture)
-    if (this.el.hasLoaded) play();
-    else this.el.addEventListener("loaded", play, { once: true });
-    this.el.addEventListener("enter-vr", play);
-    document.addEventListener("click", play, { once: true });
-    window.addEventListener("offline-media-ready", play, { once: true });
-  },
-
-  revealScreen() {
-    if (this.screenLogo) this.screenLogo.setAttribute("visible", false);
-    if (this.filmScreen) {
-      this.filmScreen.setAttribute("visible", true);
-      this.filmScreen.setAttribute("position", "0 0 -0.38");
-      this.filmScreen.setAttribute("scale", "0.96 0.96 0.96");
-      this.filmScreen.removeAttribute("animation__reveal");
-      this.filmScreen.removeAttribute("animation__approach");
-      this.filmScreen.setAttribute("animation__reveal", {
-        property: "scale",
-        from: "0.96 0.96 0.96",
-        to: "1 1 1",
-        dur: 920,
-        easing: "easeOutCubic",
-      });
-      this.filmScreen.setAttribute("animation__approach", {
-        property: "position",
-        from: "0 0 -0.38",
-        to: "0 0 0",
-        dur: 920,
-        easing: "easeOutCubic",
-      });
-    }
-
+    // Start decoding now, inside the user gesture; the orb holds still for the
+    // film's first 3 s, so starting 0.3 s early is invisible.
     if (this.hasVideo && this.video) {
-      // Quest Browser is more stable when it only decodes one video texture at a time.
-      if (this.v360) {
-        try {
-          this.v360.pause();
-        } catch (e) {}
-      }
-      const p = this.video.play();
-      if (p && p.catch) {
-        p.catch(() => {
-          this.hasVideo = false;
-          this.showPlaceholder();
-          if (this.v360) {
-            const backgroundPlay = this.v360.play();
-            if (backgroundPlay && backgroundPlay.catch) backgroundPlay.catch(() => {});
-          }
-        });
-      }
-      if (this.hasVideo) {
-        this.screenVideo.setAttribute("visible", true);
-        this.screenVideo.setAttribute("curved-video", "opacity", 0);
-        this.screenVideo.removeAttribute("animation__fadein");
-        this.screenVideo.setAttribute("animation__fadein", {
-          property: "curved-video.opacity",
-          from: 0,
-          to: 1,
-          dur: 880,
-          easing: "easeOutCubic",
-        });
-        this._onVideoEnded = () => this.finish();
-        this.video.addEventListener("ended", this._onVideoEnded, { once: true });
-      } else {
-        this.showPlaceholder();
-      }
-    } else {
-      this.showPlaceholder();
+      try {
+        this.video.currentTime = 0;
+      } catch (e) {}
+      this.playFilm();
+    }
+
+    const dissolve = this.launchParticles && this.launchParticles.components["orb-dissolve"];
+    if (dissolve && this.orbGroup) {
+      const origin = new THREE.Vector3();
+      this.orbGroup.object3D.getWorldPosition(origin);
+      dissolve.start(origin);
     }
   },
 
-  showPlaceholder() {
-    if (this.screenPlaceholder) this.screenPlaceholder.setAttribute("visible", true);
-    if (this.screenVideo) this.screenVideo.setAttribute("visible", false);
+  /* A failed play() must not cost us the film: keep the screen (it shows the
+     orb frame while paused) and retry. A bare-hand touch is not a user gesture,
+     so unmuted playback (?filmAudio=1) can be refused: fall back to muted. */
+  playFilm() {
+    const video = this.video;
+    if (!video || !this.fired || !video.paused) return;
+    const p = video.play();
+    if (!p || !p.catch) return;
+    p.catch((err) => {
+      if (!this.fired) return;
+      if (err && err.name === "NotAllowedError" && !video.muted) {
+        video.muted = true;
+        this.playFilm();
+      } else {
+        clearTimeout(this._playRetry);
+        this._playRetry = setTimeout(() => this.playFilm(), 250);
+      }
+    });
   },
 
-  /* Esc / operator: stop film and restore standby (orb + title + bright 360) */
+  tick(time) {
+    if (!this.fired) return;
+    if (this.launchedAt < 0) this.launchedAt = time;
+    const t = time - this.launchedAt;
+    const T = LAUNCH_TIMING;
+
+    if (!this.cutDone) {
+      const swell = easeInQuad(clamp01(t / T.swell));
+      if (this.orbGroup) this.orbGroup.object3D.scale.setScalar(ORB_SCALE * (1 + swell * 0.55));
+      const orb = this.orb();
+      if (orb) orb.setBoost(swell * 1.5);
+    }
+
+    if (t < T.flashHoldUntil) {
+      this.flash(easeInCubic(clamp01((t - T.flashStart) / (T.cut - T.flashStart))));
+    } else {
+      this.flash(1 - easeOutCubic(clamp01((t - T.flashHoldUntil) / T.flashFade)));
+    }
+
+    if (!this.cutDone && t >= T.cut) {
+      this.cutDone = true;
+      this.cutToFilm();
+    }
+  },
+
+  cutToFilm() {
+    if (this.orbGroup) this.orbGroup.object3D.visible = false;
+    if (this.dimmer) {
+      // Draw the dimmer over the stars (-2) but under the film screen (0).
+      this.dimmer.object3D.traverse((o) => (o.renderOrder = -1));
+      this.dimmer.setAttribute("material", "opacity", 0.85);
+    }
+    if (this.hasVideo && this.filmScreen && this.screenVideo) {
+      this.filmScreen.setAttribute("visible", true);
+      this.screenVideo.setAttribute("visible", true);
+      this.screenVideo.setAttribute("curved-video", "opacity", 1);
+      this.playFilm();
+    }
+  },
+
+  /* Esc / operator: stop the film and bring the orb back for another take */
   resetToIdle() {
     if (!this.fired) return;
-
-    clearTimeout(this._revealTimer);
-    clearTimeout(this._orbHideTimer);
-    clearTimeout(this._orbCollapseTimer);
-    clearTimeout(this._echoHideTimer);
+    this.fired = false;
+    this.cutDone = false;
+    clearTimeout(this._playRetry);
+    this.flash(0);
 
     if (this.video) {
-      if (this._onVideoEnded) {
-        this.video.removeEventListener("ended", this._onVideoEnded);
-        this._onVideoEnded = null;
-      }
       try {
         this.video.pause();
         this.video.currentTime = 0;
       } catch (e) {}
+      this.video.muted = !FILM_AUDIO;
     }
-
-    if (this.screenVideo) this.screenVideo.setAttribute("visible", false);
-    if (this.screenPlaceholder) this.screenPlaceholder.setAttribute("visible", false);
-    if (this.filmScreen) {
-      this.filmScreen.removeAttribute("animation__reveal");
-      this.filmScreen.removeAttribute("animation__approach");
-      this.filmScreen.setAttribute("position", "0 0 0");
-      this.filmScreen.setAttribute("scale", "1 1 1");
-      this.filmScreen.setAttribute("visible", false);
+    if (this.screenVideo) {
+      this.screenVideo.setAttribute("curved-video", "opacity", 0);
+      this.screenVideo.setAttribute("visible", false);
     }
-    if (this.screenLogo) this.screenLogo.setAttribute("visible", true);
-
-    if (this.dimmer) {
-      this.dimmer.removeAttribute("animation__dim");
-      this.dimmer.removeAttribute("animation__undim");
-      this.dimmer.setAttribute("material", "opacity", 0);
-    }
-    if (this.ambient) this.ambient.setAttribute("light", "intensity", 0.6);
-    if (this.keyLight) this.keyLight.setAttribute("light", "intensity", 0.9);
+    if (this.filmScreen) this.filmScreen.setAttribute("visible", false);
+    if (this.dimmer) this.dimmer.setAttribute("material", "opacity", 0);
 
     if (this.orbGroup) {
-      this.orbGroup.removeAttribute("animation__charge");
-      this.orbGroup.removeAttribute("animation__out");
-      this.orbGroup.setAttribute("scale", "1 1 1");
-      this.orbGroup.setAttribute("visible", true);
+      this.orbGroup.object3D.scale.setScalar(ORB_SCALE);
+      this.orbGroup.object3D.visible = true;
     }
-    if (this.orbEcho) {
-      this.orbEcho.removeAttribute("animation__expand");
-      this.orbEcho.removeAttribute("animation__fade");
-      this.orbEcho.setAttribute("visible", false);
-      this.orbEcho.setAttribute("scale", "1 1 1");
-      this.orbEcho.setAttribute("material", "opacity", 0);
-    }
-
-    if (this.beam) this.beam.setAttribute("visible", false);
-    if (this.ripple) this.ripple.setAttribute("visible", false);
+    const orb = this.orb();
+    if (orb) orb.setBoost(0);
     const dissolve = this.launchParticles && this.launchParticles.components["orb-dissolve"];
     if (dissolve) dissolve.reset();
 
-    this.fired = false;
     this.el.removeState("launched");
     this.el.emit("recenter-standby");
-
     if (this.hint && !this.el.is("vr-mode")) this.hint.style.display = "";
-
-    // Keep 360 looping
-    if (this.v360) {
-      const p = this.v360.play();
-      if (p && p.catch) p.catch(() => {});
-    }
-  },
-
-  finish() {
-    // Bring the world back and celebrate
-    if (this.v360) {
-      const p = this.v360.play();
-      if (p && p.catch) p.catch(() => {});
-    }
-    if (this.dimmer) {
-      this.dimmer.setAttribute("animation__undim", {
-        property: "material.opacity",
-        to: 0,
-        dur: 1400,
-        easing: "easeInOutSine",
-      });
-    }
-    if (this.ambient) tweenProp(this.ambient, "light", "intensity", 0.12, 0.6, 1200);
-    if (this.keyLight) tweenProp(this.keyLight, "light", "intensity", 0.25, 0.9, 1200);
-    this.burstParticles(60, "#f2c14e");
-  },
-
-  /* ----- Orb condenses, dissolves into light, then reveals the film ----- */
-  playOrbTransition() {
-    if (!this.orbGroup) return;
-
-    this.orbGroup.setAttribute("visible", true);
-    this.orbGroup.setAttribute("scale", "1 1 1");
-    this.orbGroup.removeAttribute("animation__charge");
-    this.orbGroup.removeAttribute("animation__out");
-    this.orbGroup.setAttribute("animation__charge", {
-      property: "scale",
-      from: "1 1 1",
-      to: "0.82 0.82 0.82",
-      dur: 180,
-      easing: "easeInCubic",
-    });
-
-    clearTimeout(this._orbCollapseTimer);
-    this._orbCollapseTimer = setTimeout(() => {
-      this.orbGroup.removeAttribute("animation__charge");
-      this.orbGroup.setAttribute("animation__out", {
-        property: "scale",
-        from: "0.82 0.82 0.82",
-        to: "0.01 0.01 0.01",
-        dur: 360,
-        easing: "easeInCubic",
-      });
-
-      if (this.orbEcho) {
-        this.orbEcho.setAttribute("visible", true);
-        this.orbEcho.setAttribute("scale", "0.72 0.72 0.72");
-        this.orbEcho.setAttribute("material", "opacity", 0.52);
-        this.orbEcho.removeAttribute("animation__expand");
-        this.orbEcho.removeAttribute("animation__fade");
-        this.orbEcho.setAttribute("animation__expand", {
-          property: "scale",
-          from: "0.72 0.72 0.72",
-          to: "2.75 2.75 2.75",
-          dur: 620,
-          easing: "easeOutQuart",
-        });
-        this.orbEcho.setAttribute("animation__fade", {
-          property: "material.opacity",
-          from: 0.52,
-          to: 0,
-          dur: 620,
-          easing: "easeInCubic",
-        });
-      }
-
-      const dissolve = this.launchParticles && this.launchParticles.components["orb-dissolve"];
-      if (dissolve) {
-        const origin = new THREE.Vector3();
-        this.orbGroup.object3D.getWorldPosition(origin);
-        dissolve.start(origin);
-      }
-    }, 180);
-
-    clearTimeout(this._orbHideTimer);
-    this._orbHideTimer = setTimeout(() => this.orbGroup.setAttribute("visible", false), 540);
-    clearTimeout(this._echoHideTimer);
-    this._echoHideTimer = setTimeout(() => {
-      if (this.orbEcho) this.orbEcho.setAttribute("visible", false);
-    }, 820);
-  },
-
-  /* ----- Custom particle burst (no external dependency) ----- */
-  burstParticles(count = 48, color = "#9fc2ff") {
-    const origin = this.orbGroup || this.el;
-    const originPos = new THREE.Vector3(0, 1.35, -2.2);
-    if (origin.object3D) origin.object3D.getWorldPosition(originPos);
-
-    for (let i = 0; i < count; i++) {
-      const p = document.createElement("a-sphere");
-      p.setAttribute("radius", 0.03 + Math.random() * 0.03);
-      p.setAttribute(
-        "material",
-        `color: ${color}; emissive: ${color}; emissiveIntensity: 2; opacity: 0.95; transparent: true`
-      );
-      p.setAttribute("position", `${originPos.x} ${originPos.y} ${originPos.z}`);
-
-      const dx = (Math.random() - 0.5) * 6;
-      const dy = Math.random() * 4;
-      const dz = (Math.random() - 0.5) * 6;
-      const dur = 700 + Math.random() * 700;
-
-      p.setAttribute("animation__move", {
-        property: "position",
-        to: `${originPos.x + dx} ${originPos.y + dy} ${originPos.z + dz}`,
-        dur,
-        easing: "easeOutCubic",
-      });
-      p.setAttribute("animation__fade", {
-        property: "material.opacity",
-        to: 0,
-        dur,
-        easing: "easeInCubic",
-      });
-
-      this.el.appendChild(p);
-      setTimeout(() => p.parentNode && p.parentNode.removeChild(p), dur + 60);
-    }
-  },
-
-  /* ----- Light beam shoots up ----- */
-  playBeam() {
-    if (!this.beam) return;
-    const origin = new THREE.Vector3(0, 1.3, -0.75);
-    if (this.orbGroup && this.orbGroup.object3D) {
-      this.orbGroup.object3D.getWorldPosition(origin);
-    }
-    this.beam.setAttribute("visible", true);
-    this.beam.setAttribute("height", 0.1);
-    this.beam.setAttribute("position", `${origin.x} ${origin.y} ${origin.z}`);
-    this.beam.setAttribute("animation__grow", {
-      property: "height",
-      from: 0.1,
-      to: 18,
-      dur: 800,
-      easing: "easeOutQuart",
-    });
-    this.beam.setAttribute("animation__rise", {
-      property: "position",
-      from: `${origin.x} ${origin.y} ${origin.z}`,
-      to: `${origin.x} ${origin.y + 9} ${origin.z}`,
-      dur: 800,
-      easing: "easeOutQuart",
-    });
-    this.beam.setAttribute("animation__fade", {
-      property: "material.opacity",
-      from: 0.55,
-      to: 0,
-      dur: 1600,
-      easing: "easeInCubic",
-    });
-    setTimeout(() => this.beam.setAttribute("visible", false), 1700);
-  },
-
-  /* ----- Floor ripple expands outward ----- */
-  playRipple() {
-    if (!this.ripple) return;
-    this.ripple.setAttribute("visible", true);
-    this.ripple.setAttribute("material", "opacity", 0.9);
-    this.ripple.setAttribute("scale", "1 1 1");
-    this.ripple.setAttribute("animation__expand", {
-      property: "scale",
-      from: "1 1 1",
-      to: "9 9 9",
-      dur: 1400,
-      easing: "easeOutQuad",
-    });
-    this.ripple.setAttribute("animation__fade", {
-      property: "material.opacity",
-      from: 0.9,
-      to: 0,
-      dur: 1400,
-      easing: "easeInQuad",
-    });
-    setTimeout(() => this.ripple.setAttribute("visible", false), 1450);
   },
 });

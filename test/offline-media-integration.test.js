@@ -6,46 +6,60 @@ const test = require("node:test");
 const root = path.join(__dirname, "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-test("shows an operator-controlled local media preparation action", () => {
+test("shows an operator-controlled local film preparation action", () => {
   const html = read("index.html");
   const offlineMedia = read("js/local-media.js");
   assert.match(html, /id="prepareOfflineButton"/);
-  assert.match(html, /id="space360File"/);
-  assert.match(html, /id="openingFile"/);
+  assert.match(html, /id="filmFile"/);
   assert.match(html, /src="js\/local-media\.js/);
   assert.match(offlineMedia, /URL\.createObjectURL/);
 });
 
-test("plays operator-selected Quest files instead of caching the films in the browser", () => {
+test("plays the operator-selected Quest file instead of caching the film in the browser", () => {
   const html = read("index.html");
   const offlineMedia = read("js/local-media.js");
   const launch = read("js/launch.js");
-  assert.match(html, /id="space360File"/);
-  assert.match(html, /id="openingFile"/);
-  assert.doesNotMatch(html, /id="v360"[\s\S]*?src="assets\/space360\.mp4"/);
-  assert.match(offlineMedia, /URL\.createObjectURL/);
+  assert.doesNotMatch(html, /id="openingVideo"[^>]*src=/);
   assert.doesNotMatch(offlineMedia, /offline-media-prepare/);
   assert.match(launch, /offline-media-ready[\s\S]*?this\.hasVideo = Boolean\(this\.video\?\.src\)/);
 });
 
-test("prevents the ceremony launch before both media files are ready", () => {
-  const launch = read("js/launch.js");
-  assert.match(launch, /VROfflineMedia\.isReady/);
-  assert.match(launch, /offline-media-not-ready/);
+test("drops the old 360 video background for the baked galaxy sky", () => {
+  const html = read("index.html");
+  assert.doesNotMatch(html, /id="v360"/);
+  assert.doesNotMatch(html, /space360/);
+  assert.match(html, /src="assets\/sky-galaxy\.jpg"/);
+  assert.match(html, /src="assets\/orb-sprite\.png"/);
 });
 
-test("waits to load the VR videos until offline preparation completes", () => {
+test("the orb launches even without a local film (the LED PC plays the film)", () => {
+  const launch = read("js/launch.js");
+  assert.doesNotMatch(launch, /offline-media-not-ready/);
+  assert.doesNotMatch(launch, /VROfflineMedia\.isReady/);
+});
+
+test("waits to load the film until the operator picks it, and keeps it muted by default", () => {
   const html = read("index.html");
   const launch = read("js/launch.js");
-  assert.match(html, /id="v360"[\s\S]*?preload="none"/);
-  assert.match(html, /id="openingVideo"[\s\S]*?preload="none"/);
-  assert.match(launch, /offline-media-ready/);
+  assert.match(html, /id="openingVideo"[\s\S]*?preload="none"[\s\S]*?muted/);
+  assert.match(launch, /this\.video\.muted = !FILM_AUDIO/);
 });
 
-test("pauses the 360 background while the opening film plays, then resumes it", () => {
+test("animations run from tick(), which keeps working during an immersive WebXR session", () => {
   const launch = read("js/launch.js");
-  assert.match(launch, /this\.v360\.pause\(\)[\s\S]*?this\.video\.play\(\)/);
-  assert.match(launch, /finish\(\) \{[\s\S]*?this\.v360\.play\(\)/);
+  assert.doesNotMatch(launch, /requestAnimationFrame\(/);
+  assert.match(launch, /launch-sequence[\s\S]*?tick\(time\)/);
+});
+
+test("a refused play() keeps the film screen and retries (hand touch is not a user gesture)", () => {
+  const launch = read("js/launch.js");
+  assert.doesNotMatch(launch, /catch\(\(\) => \(this\.hasVideo = false\)\)/);
+  assert.match(launch, /NotAllowedError[\s\S]*?video\.muted = true/);
+});
+
+test("an operator launch during re-centring locks the anchor so the screen can show", () => {
+  const launch = read("js/launch.js");
+  assert.match(launch, /if \(anchor && !anchor\.locked\) anchor\.lockAtCurrentPose\(\)/);
 });
 
 test("service worker caches only the lightweight app shell", () => {
@@ -53,6 +67,8 @@ test("service worker caches only the lightweight app shell", () => {
   assert.match(worker, /skipWaiting\(\)/);
   assert.match(worker, /cache\.addAll\(SHELL_URLS\)/);
   assert.match(worker, /js\/local-media\.js/);
+  assert.match(worker, /js\/sky-band\.js/);
+  assert.match(worker, /assets\/sky-galaxy\.jpg/);
   assert.doesNotMatch(worker, /MEDIA_URLS/);
   assert.doesNotMatch(worker, /arrayBuffer\(\)/);
 });
