@@ -734,19 +734,17 @@ AFRAME.registerComponent("space-dust", {
 });
 
 /* =============================================================
-   ceremony-orb — the golden crystal orb, matched to the first frame
-   of Peluncuran.mp4 and built to read as a solid object in stereo:
-   - a real 3D glass shell (front + back faces) whose gold fresnel rim
-     and highlights are computed per eye, so each eye sees its own
-     silhouette and reflections
-   - the light inside the orb, cut from the film's first frame, on
-     three billboards spread through the sphere's depth
-   - gold motes swirling through the whole volume
-   - a soft outer halo and the horizontal lens streak
+   ceremony-orb — the golden crystal orb, in the colours of the first
+   frame of Peluncuran.mp4, built as a true volume so it reads as a
+   solid object from any angle and in stereo:
+   - the inside is ray-marched per eye: a white-hot core, warm inner
+     glow and swirling gold filaments at real depths inside the glass
+   - the glass surface carries a gold rim, world-fixed highlights and a
+     reflection of the galaxy, all shaded from each eye's position
+   - gold motes orbit through the volume; a soft halo and the lens
+     streak finish the look
+   Nothing inside the orb is a flat billboard any more.
    ============================================================= */
-// Glass shell diameter as a fraction of orb-interior.png's width (340px of 768px).
-const ORB_SHELL_FRACTION = 340 / 768;
-
 const ORB_SHELL_VERTEX = `
   varying vec3 vWorldNormal;
   varying vec3 vWorldPosition;
@@ -758,104 +756,157 @@ const ORB_SHELL_VERTEX = `
   }
 `;
 
-const ORB_SHELL_FRAGMENT = `
+// Shared rim/highlight terms. rho: distance from the orb's centre as seen by
+// this eye (1 = silhouette); the band brightens toward the outer ~12% of the
+// radius, as measured on the film's first frame (158–178px of 178px).
+const ORB_GLASS_GLSL = `
   uniform vec3 uRimColor;
   uniform vec3 uSpecColor;
   uniform vec3 uLight1;
   uniform vec3 uLight2;
   uniform float uStrength;
   uniform float uBoost;
-  uniform float uNormalSign;
-  varying vec3 vWorldNormal;
-  varying vec3 vWorldPosition;
-  void main() {
-    // Explicit sign: three.js flips the winding for BackSide, so gl_FrontFacing
-    // is true there too and cannot tell the far side of the shell apart.
-    vec3 N = normalize(vWorldNormal) * uNormalSign;
-    // cameraPosition is the eye being rendered: the rim differs per eye.
-    vec3 V = normalize(cameraPosition - vWorldPosition);
+  vec3 glassSurface(vec3 N, vec3 V) {
     float ndv = clamp(dot(N, V), 0.0, 1.0);
     float edge = 1.0 - ndv;
-    // rho: distance from the orb's centre as seen by this eye (1 = silhouette).
-    // A gold band brightening toward the outer ~12% of the radius (as measured
-    // on the film's first frame: 158–178px of a 178px radius), plus a
-    // faint inner glow so the light inside meets the glass without a gap.
     float rho = sqrt(1.0 - ndv * ndv);
     float band = smoothstep(0.86, 1.0, rho);
     float rim = band * band * 0.95 + smoothstep(0.55, 0.95, rho) * 0.12;
-    // Window-like reflections, kept toward the rim as arcs (as in the film).
     vec3 R = reflect(-V, N);
     float spec = pow(max(dot(R, uLight1), 0.0), 26.0) * 1.1 + pow(max(dot(R, uLight2), 0.0), 18.0) * 0.7;
     spec *= smoothstep(0.2, 0.7, edge);
-    vec3 color = (uRimColor * rim + uSpecColor * spec) * uStrength * (1.0 + uBoost * 0.8);
+    return uRimColor * rim + uSpecColor * spec;
+  }
+`;
+
+// Far side of the glass, seen through the orb (rim only, dimmer).
+const ORB_BACK_FRAGMENT = `
+  ${ORB_GLASS_GLSL}
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+  void main() {
+    // Inward normal: three.js flips the winding for BackSide, so gl_FrontFacing
+    // cannot tell the far side apart.
+    vec3 N = -normalize(vWorldNormal);
+    vec3 V = normalize(cameraPosition - vWorldPosition);
+    gl_FragColor = vec4(glassSurface(N, V) * uStrength * (1.0 + uBoost * 0.8), 1.0);
+  }
+`;
+
+const ORB_VOLUME_FRAGMENT = `
+  ${ORB_GLASS_GLSL}
+  uniform float uTime;
+  uniform vec3 uCenter;
+  uniform float uRadius;
+  uniform sampler2D uSky;
+  uniform float uSkyYaw;
+  uniform float uHasSky;
+  uniform vec3 uCoreColor;
+  uniform vec3 uInnerColor;
+  uniform vec3 uGoldColor;
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+
+  float orbHash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float orbNoise(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(orbHash(i), orbHash(i + vec3(1.0, 0.0, 0.0)), f.x),
+          mix(orbHash(i + vec3(0.0, 1.0, 0.0)), orbHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+      mix(mix(orbHash(i + vec3(0.0, 0.0, 1.0)), orbHash(i + vec3(1.0, 0.0, 1.0)), f.x),
+          mix(orbHash(i + vec3(0.0, 1.0, 1.0)), orbHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+      f.z);
+  }
+
+  // The galaxy reflected in the glass (same equirect mapping as galaxy-sky).
+  vec3 skyReflection(vec3 d) {
+    float c = cos(uSkyYaw), s = sin(uSkyYaw);
+    d = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+    float theta = acos(clamp(d.y, -1.0, 1.0));
+    float phi = atan(d.z, -d.x);
+    vec2 uv = vec2(fract(phi / 6.2831853), 1.0 - theta / 3.1415927);
+    return pow(texture2D(uSky, uv).rgb, vec3(0.4545));
+  }
+
+  void main() {
+    // A ray from THIS eye through the orb, in orb units (radius 1).
+    vec3 rd = normalize(vWorldPosition - cameraPosition);
+    vec3 oc = (cameraPosition - uCenter) / uRadius;
+    float b = dot(oc, rd);
+    float h = b * b - (dot(oc, oc) - 1.0);
+    if (h <= 0.0) discard;
+    h = sqrt(h);
+    float t0 = max(-b - h, 0.0);
+    float t1 = -b + h;
+    const int STEPS = 18;
+    float dt = (t1 - t0) / float(STEPS);
+    float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+
+    vec3 inside = vec3(0.0);
+    for (int i = 0; i < STEPS; i++) {
+      vec3 p = oc + rd * (t0 + (float(i) + jitter) * dt);
+      float r2 = dot(p, p);
+      float r = sqrt(r2);
+      // Differential swirl: the inside turns faster than the outside.
+      float a = uTime * 0.35 + (1.0 - r) * 2.4;
+      float ca = cos(a), sa = sin(a);
+      vec3 q = vec3(ca * p.x - sa * p.z, p.y, sa * p.x + ca * p.z);
+      float n = orbNoise(q * 4.8 + vec3(0.0, uTime * 0.12, 0.0)) * 0.6 + orbNoise(q * 11.0 - uTime * 0.2) * 0.4;
+      float filaments = pow(smoothstep(0.48, 0.85, n), 2.2) * (1.0 - smoothstep(0.8, 1.0, r));
+      float core = exp(-r2 * 16.0);
+      float glow = exp(-r2 * 2.6);
+      inside += (uCoreColor * core * 4.2 + uInnerColor * glow * 0.45 + uGoldColor * filaments * 2.4) * dt;
+    }
+
+    vec3 N = normalize(vWorldNormal);
+    vec3 V = -rd;
+    float edge = 1.0 - clamp(dot(N, V), 0.0, 1.0);
+    vec3 reflection = uHasSky * skyReflection(reflect(rd, N)) * (0.03 + 0.6 * pow(edge, 3.0));
+
+    vec3 color = inside * (1.0 + uBoost * 1.2) + (glassSurface(N, V) * uStrength) * (1.0 + uBoost * 0.8) + reflection;
     gl_FragColor = vec4(color, 1.0);
   }
 `;
 
 AFRAME.registerComponent("ceremony-orb", {
   schema: {
-    src: { type: "selector" },
     diameter: { default: 0.38 },
     motes: { default: 700 },
   },
   init() {
     const D = this.data.diameter;
     const R = D / 2;
+    this.shellRadius = R * 1.035;
     this.boost = 0;
     this.cameraPosition = new THREE.Vector3();
     this.worldQuaternion = new THREE.Quaternion();
+    this.worldScale = new THREE.Vector3();
     this.light1 = new THREE.Vector3(-0.6, 0.62, 0.5).normalize();
     this.light2 = new THREE.Vector3(0.66, -0.52, 0.52).normalize();
+    this.skyEl = this.el.sceneEl.querySelector("#sky");
     this.billboard = new THREE.Group();
     this.el.object3D.add(this.billboard);
 
-    // Outer halo (behind everything else in the billboard)
+    // Soft halo around the glass
     const glowTexture = canvasTexture(256, 256, (ctx, w, h) => {
       const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      g.addColorStop(0, "rgba(252,236,198,0.10)");
-      g.addColorStop(0.3, "rgba(236,190,120,0.26)");
-      g.addColorStop(0.36, "rgba(215,166,109,0.2)");
-      g.addColorStop(0.5, "rgba(170,120,70,0.07)");
+      g.addColorStop(0, "rgba(252,236,198,0.0)");
+      g.addColorStop(0.28, "rgba(236,190,120,0.10)");
+      g.addColorStop(0.35, "rgba(215,166,109,0.24)");
+      g.addColorStop(0.46, "rgba(170,120,70,0.08)");
       g.addColorStop(0.75, "rgba(120,90,60,0.02)");
       g.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
     });
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(D * 3, D * 3), additiveMaterial(glowTexture, 0.9));
-    this.glow.position.z = -R * 1.1;
     this.billboard.add(this.glow);
-
-    // The light inside the orb, on three layers through its depth. Nearer layers
-    // are scaled down so the single-eye (LED) view still matches the film.
-    const image = this.data.src;
-    const interiorTexture = srgbTexture(new THREE.Texture(image));
-    if (image && image.complete) interiorTexture.needsUpdate = true;
-    else if (image) image.addEventListener("load", () => (interiorTexture.needsUpdate = true), { once: true });
-    const spriteSize = D / ORB_SHELL_FRACTION;
-    const eyeDistance = 0.81;
-    this.interior = [-0.45, 0, 0.45].map((depth, i) => {
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(spriteSize, spriteSize),
-        additiveMaterial(interiorTexture, i === 1 ? 0.5 : 0.32)
-      );
-      mesh.position.z = depth * R;
-      mesh.scale.setScalar((eyeDistance - depth * R) / eyeDistance);
-      this.billboard.add(mesh);
-      return mesh;
-    });
-
-    const coreTexture = canvasTexture(256, 256, (ctx, w, h) => {
-      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      g.addColorStop(0, "rgba(252,251,241,1)");
-      g.addColorStop(0.25, "rgba(252,236,198,0.75)");
-      g.addColorStop(0.6, "rgba(215,166,109,0.22)");
-      g.addColorStop(1, "rgba(215,166,109,0)");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-    });
-    this.core = new THREE.Mesh(new THREE.PlaneGeometry(D * 0.7, D * 0.7), additiveMaterial(coreTexture, 0.25));
-    this.core.position.z = 0.004;
-    this.billboard.add(this.core);
 
     const streakTexture = canvasTexture(1024, 64, (ctx, w, h) => {
       const pixels = ctx.createImageData(w, h);
@@ -873,37 +924,60 @@ AFRAME.registerComponent("ceremony-orb", {
       }
       ctx.putImageData(pixels, 0, 0);
     });
-    // In front of the shell, like a flare on the camera lens.
+    // In front of the glass, like a flare on the camera lens.
     this.streak = new THREE.Mesh(new THREE.PlaneGeometry(D * 5.2, D * 0.1), additiveMaterial(streakTexture, 0.5));
     this.streak.position.z = R * 1.1;
     this.billboard.add(this.streak);
 
-    // Real 3D glass shell: back faces first (the far side seen through the glass).
-    const shellGeometry = new THREE.SphereGeometry(R * 1.035, 64, 48);
-    const shellMaterial = (side, strength) =>
+    const glassUniforms = (strength) => ({
+      uRimColor: { value: new THREE.Color(0.92, 0.58, 0.22) },
+      uSpecColor: { value: new THREE.Color(1.0, 0.94, 0.8) },
+      uLight1: { value: new THREE.Vector3() },
+      uLight2: { value: new THREE.Vector3() },
+      uStrength: { value: strength },
+      uBoost: { value: 0 },
+    });
+    const shellGeometry = new THREE.SphereGeometry(this.shellRadius, 64, 48);
+
+    this.shellBack = new THREE.Mesh(
+      shellGeometry,
       new THREE.ShaderMaterial({
-        uniforms: {
-          uRimColor: { value: new THREE.Color(0.92, 0.58, 0.22) },
-          uSpecColor: { value: new THREE.Color(1.0, 0.94, 0.8) },
-          uLight1: { value: new THREE.Vector3() },
-          uLight2: { value: new THREE.Vector3() },
-          uStrength: { value: strength },
-          uBoost: { value: 0 },
-          uNormalSign: { value: side === THREE.BackSide ? -1 : 1 },
-        },
+        uniforms: glassUniforms(0.35),
         vertexShader: ORB_SHELL_VERTEX,
-        fragmentShader: ORB_SHELL_FRAGMENT,
-        side,
+        fragmentShader: ORB_BACK_FRAGMENT,
+        side: THREE.BackSide,
         transparent: true,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-      });
-    this.shellBack = new THREE.Mesh(shellGeometry, shellMaterial(THREE.BackSide, 0.35));
-    this.shellFront = new THREE.Mesh(shellGeometry, shellMaterial(THREE.FrontSide, 1));
+      })
+    );
     this.shellBack.renderOrder = 1;
-    this.shellFront.renderOrder = 3;
     this.el.object3D.add(this.shellBack);
-    this.el.object3D.add(this.shellFront);
+
+    this.volume = new THREE.Mesh(
+      shellGeometry,
+      new THREE.ShaderMaterial({
+        uniforms: Object.assign(glassUniforms(1), {
+          uTime: { value: 0 },
+          uCenter: { value: new THREE.Vector3() },
+          uRadius: { value: this.shellRadius },
+          uSky: { value: null },
+          uSkyYaw: { value: 0 },
+          uHasSky: { value: 0 },
+          uCoreColor: { value: new THREE.Color(1.0, 0.98, 0.92) },
+          uInnerColor: { value: new THREE.Color(0.95, 0.66, 0.32) },
+          uGoldColor: { value: new THREE.Color(0.95, 0.6, 0.22) },
+        }),
+        vertexShader: ORB_SHELL_VERTEX,
+        fragmentShader: ORB_VOLUME_FRAGMENT,
+        side: THREE.FrontSide,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    this.volume.renderOrder = 3;
+    this.el.object3D.add(this.volume);
 
     this.motes = this.createMotes(D);
     this.motes.renderOrder = 2;
@@ -931,7 +1005,7 @@ AFRAME.registerComponent("ceremony-orb", {
       // Inner motes orbit faster, like the swirl in the film.
       speed[i] = (0.22 + rand() * 0.3) * (1.5 - r / maxRadius);
       const sparkle = rand() > 0.94;
-      sizes[i] = sparkle ? 0.005 + rand() * 0.003 : 0.0014 + Math.pow(rand(), 2.5) * 0.003;
+      sizes[i] = sparkle ? 0.005 + rand() * 0.003 : 0.0016 + Math.pow(rand(), 2.5) * 0.0034;
       phases[i] = rand() * Math.PI * 2;
       color.set(sparkle ? "#fcfbf1" : rand() > 0.5 ? "#fcecc6" : "#d7a66d");
       colors[i * 3] = color.r;
@@ -979,7 +1053,7 @@ AFRAME.registerComponent("ceremony-orb", {
           float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
           if (d > 1.0) discard;
           float glow = pow(1.0 - d, 1.6);
-          gl_FragColor = vec4(vColor * (1.0 + uBoost), glow * vAlpha * 0.85);
+          gl_FragColor = vec4(vColor * (1.0 + uBoost), glow * vAlpha * 0.9);
         }
       `,
       transparent: true,
@@ -1003,21 +1077,33 @@ AFRAME.registerComponent("ceremony-orb", {
       this.billboard.lookAt(this.cameraPosition);
     }
     const b = this.boost;
-    this.interior.forEach((mesh) => mesh.material.color.setScalar(1 + b * 0.8));
-    this.core.material.opacity = 0.22 + 0.07 * Math.sin(t * 1.15) + b * 0.6;
-    this.core.scale.setScalar(1 + 0.04 * Math.sin(t * 1.15) + b * 0.5);
     this.streak.material.opacity = 0.46 + 0.06 * Math.sin(t * 0.8 + 1.3) + b * 0.5;
     this.glow.material.opacity = 0.9 + 0.08 * Math.sin(t * 1.15) + b * 0.6;
 
-    // Reflections are fixed to the ceremony (not the head), so they shift
-    // naturally as the wearer moves, like light on real glass.
-    this.el.object3D.getWorldQuaternion(this.worldQuaternion);
-    for (const shell of [this.shellBack, this.shellFront]) {
+    // Highlights are fixed to the ceremony (not the head), so they shift as
+    // the wearer moves, like light on real glass.
+    const object = this.el.object3D;
+    object.getWorldQuaternion(this.worldQuaternion);
+    object.getWorldScale(this.worldScale);
+    for (const shell of [this.shellBack, this.volume]) {
       const u = shell.material.uniforms;
       u.uLight1.value.copy(this.light1).applyQuaternion(this.worldQuaternion);
       u.uLight2.value.copy(this.light2).applyQuaternion(this.worldQuaternion);
       u.uBoost.value = b;
     }
+    const v = this.volume.material.uniforms;
+    v.uTime.value = t;
+    object.getWorldPosition(v.uCenter.value);
+    v.uRadius.value = this.shellRadius * this.worldScale.x;
+    if (!v.uSky.value) {
+      const sky = this.el.sceneEl.querySelector("[galaxy-sky]");
+      const skyMesh = sky && sky.components["galaxy-sky"] && sky.components["galaxy-sky"].mesh;
+      if (skyMesh && skyMesh.material.map && skyMesh.material.map.image) {
+        v.uSky.value = skyMesh.material.map;
+        v.uHasSky.value = 1;
+      }
+    }
+    if (this.skyEl) v.uSkyYaw.value = this.skyEl.object3D.rotation.y;
 
     this.moteMaterial.uniforms.uTime.value = t;
     this.moteMaterial.uniforms.uBoost.value = b;
@@ -1028,15 +1114,15 @@ AFRAME.registerComponent("ceremony-orb", {
     this.el.object3D.remove(this.billboard);
     this.el.object3D.remove(this.motes);
     this.el.object3D.remove(this.shellBack);
-    this.el.object3D.remove(this.shellFront);
-    [this.glow, this.core, this.streak, ...this.interior].forEach((mesh) => {
+    this.el.object3D.remove(this.volume);
+    [this.glow, this.streak].forEach((mesh) => {
       mesh.geometry.dispose();
-      if (mesh.material.map) mesh.material.map.dispose();
+      mesh.material.map.dispose();
       mesh.material.dispose();
     });
-    this.shellFront.geometry.dispose();
+    this.volume.geometry.dispose();
     this.shellBack.material.dispose();
-    this.shellFront.material.dispose();
+    this.volume.material.dispose();
     this.motes.geometry.dispose();
     this.moteMaterial.dispose();
   },

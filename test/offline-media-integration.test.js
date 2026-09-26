@@ -29,7 +29,6 @@ test("drops the old 360 video background for the baked galaxy sky", () => {
   assert.doesNotMatch(html, /id="v360"/);
   assert.doesNotMatch(html, /space360/);
   assert.match(html, /src="assets\/sky-galaxy\.jpg"/);
-  assert.match(html, /src="assets\/orb-interior\.png"/);
 });
 
 test("the orb launches even without a local film (the LED PC plays the film)", () => {
@@ -47,10 +46,13 @@ test("waits to load the film until the operator picks it, and plays it with soun
   assert.match(launch, /this\.video\.muted = !FILM_AUDIO/);
 });
 
-test("the orb has a real 3D glass shell shaded per eye", () => {
+test("the orb is a ray-marched volume shaded per eye, with no flat billboards inside", () => {
   const launch = read("js/launch.js");
-  assert.match(launch, /new THREE\.SphereGeometry\(R \* 1\.035/);
-  assert.match(launch, /cameraPosition - vWorldPosition/);
+  const html = read("index.html");
+  assert.match(launch, /new THREE\.SphereGeometry\(this\.shellRadius/);
+  assert.match(launch, /vec3 rd = normalize\(vWorldPosition - cameraPosition\)/);
+  assert.match(launch, /for \(int i = 0; i < STEPS; i\+\+\)/);
+  assert.doesNotMatch(html, /orb-interior\.png|orb-sprite\.png/);
 });
 
 test("animations run from tick(), which keeps working during an immersive WebXR session", () => {

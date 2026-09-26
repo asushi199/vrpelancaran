@@ -9,7 +9,7 @@
     <script src="vendor/aframe.min.js"></script>
     <script src="js/sky-band.js"></script>
     <script src="js/local-media.js" defer></script>
-    <script src="js/launch.js?v=20260926-prime14" defer></script>
+    <script src="js/launch.js?v=20260926-prime17" defer></script>
 
     <style>
       html,
@@ -157,8 +157,7 @@
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
-        <!-- Built by tools/make-assets.sh from the film's first frame -->
-        <img id="orbInterior" src="assets/orb-interior.png" />
+        <!-- Built by tools/make-assets.sh -->
         <img id="skyTexture" src="assets/sky-galaxy.jpg" />
       </a-assets>
 
@@ -197,7 +196,7 @@
         </a-entity>
 
         <!-- ============ GOLDEN ORB (the touch target) ============ -->
-        <a-entity id="orbGroup" position="0 -0.3 -0.75" ceremony-orb="src: #orbInterior; diameter: 0.38">
+        <a-entity id="orbGroup" position="0 -0.3 -0.75" ceremony-orb="diameter: 0.38">
           <a-sphere
             id="orb"
             class="clickable"
