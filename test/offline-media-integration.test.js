@@ -99,6 +99,15 @@ test("the title card shows the JPN emblem and the three launch lines in real fon
   assert.match(launch, /this\.el\.emit\("film-cut"\)/);
 });
 
+test("the title is layered in depth, with JEJAK IMPAK as extruded gold letters and a light sweep", () => {
+  const launch = read("js/launch.js");
+  assert.match(launch, /const TITLE_DEPTH = \{ emblem: 0\.35, text: 0, title: -0\.2, glow: -0\.6 \}/);
+  assert.match(launch, /new THREE\.ExtrudeGeometry\(shapes/);
+  assert.match(launch, /glyphs: \{ default: "assets\/fonts\/cinzel-bold-title\.json" \}/);
+  assert.match(launch, /metalness: 1/);
+  assert.match(launch, /titleSweep\(time \/ 1000\)/);
+});
+
 test("service worker caches only the lightweight app shell", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);

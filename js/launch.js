@@ -1211,9 +1211,15 @@ AFRAME.registerComponent("ceremony-orb", {
 });
 
 /* =============================================================
-   title-card — the JPN Perak emblem and the launch title, set in real
-   fonts (Cinzel, Montserrat; OFL, bundled in assets/fonts) on a canvas
-   texture above the orb. Hidden behind the flash when the film starts.
+   title-card — the JPN Perak emblem and the launch title above the
+   orb, built in layers at different depths so it reads as a
+   dimensional display in the headset:
+     emblem (front) · ministry + PELUNCURAN + book line · JEJAK IMPAK
+     as extruded gold metal letters · a soft gold glow (back)
+   Layers are scaled by their distance so the single-eye (LED) view
+   keeps the same layout. A light sweep crosses the gold every few
+   seconds. Text uses real fonts (Cinzel, Montserrat; OFL, bundled in
+   assets/fonts). Hidden behind the flash when the film starts.
    ============================================================= */
 const TITLE_LINES = {
   ministry: ["KEMENTERIAN PENDIDIKAN", "JABATAN PENDIDIKAN NEGERI PERAK"],
@@ -1226,6 +1232,10 @@ const TITLE_FONTS = [
   ["Cinzel", "assets/fonts/Cinzel-VariableFont_wght.ttf", "400 900"],
   ["Montserrat", "assets/fonts/Montserrat-VariableFont_wght.ttf", "100 900"],
 ];
+
+// Depth of each layer in metres, + toward the wearer, relative to the card.
+const TITLE_DEPTH = { emblem: 0.35, text: 0, title: -0.2, glow: -0.6 };
+const TITLE_SWEEP_PERIOD = 6; // seconds between light sweeps
 
 function loadTitleFonts() {
   if (!window.FontFace || !document.fonts) return Promise.resolve();
@@ -1258,13 +1268,83 @@ function spacedWidth(ctx, text, spacing) {
   return [...text].reduce((w, c) => w + ctx.measureText(c).width, 0) + spacing * ([...text].length - 1);
 }
 
+/* Sweep position along the text (0..1 across it) or off-screen between sweeps. */
+function titleSweep(seconds) {
+  const phase = (seconds % TITLE_SWEEP_PERIOD) / TITLE_SWEEP_PERIOD;
+  return phase < 0.4 ? -0.3 + (phase / 0.4) * 1.65 : 9;
+}
+
+/* Glyph outlines (tools/make-title-glyphs.py) → THREE.Shapes, laid out with
+   letter spacing, baseline at y = 0, centred on x = 0. */
+function titleShapes(font, text, capHeightMetres, spacingUnits) {
+  const scale = capHeightMetres / font.capHeight;
+  const chars = [...text];
+  const total =
+    chars.reduce((w, c) => w + (font.glyphs[c] ? font.glyphs[c].advance : 0), 0) + spacingUnits * (chars.length - 1);
+  let cursor = -total / 2;
+  const shapes = [];
+  for (const c of chars) {
+    const glyph = font.glyphs[c];
+    if (!glyph) continue;
+    if (glyph.commands.length) {
+      const path = new THREE.ShapePath();
+      const X = (v) => (cursor + v) * scale;
+      const Y = (v) => v * scale;
+      for (const cmd of glyph.commands) {
+        const [op, ...v] = cmd;
+        if (op === "M") path.moveTo(X(v[0]), Y(v[1]));
+        else if (op === "L") path.lineTo(X(v[0]), Y(v[1]));
+        else if (op === "Q") path.quadraticCurveTo(X(v[0]), Y(v[1]), X(v[2]), Y(v[3]));
+        else if (op === "C") path.bezierCurveTo(X(v[0]), Y(v[1]), X(v[2]), Y(v[3]), X(v[4]), Y(v[5]));
+      }
+      shapes.push(...path.toShapes());
+    }
+    cursor += glyph.advance + spacingUnits;
+  }
+  return shapes;
+}
+
+/* A bright studio-like environment for the gold, so metal letters shine even
+   against the dark sky. */
+function goldEnvironment(renderer) {
+  const texture = canvasTexture(512, 256, (ctx, w, h) => {
+    // The letter faces look back toward the horizon behind the wearer, so the
+    // middle of this environment sets their colour: keep it a bright warm gold.
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#fff8e8");
+    g.addColorStop(0.3, "#f8dca8");
+    g.addColorStop(0.5, "#e2b066");
+    g.addColorStop(0.66, "#7a4c1e");
+    g.addColorStop(1, "#140c05");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    // Soft "light boxes" that become moving highlights on the letters
+    ctx.fillStyle = "rgba(255,252,240,0.95)";
+    [[40, 70, 120, 22], [230, 50, 60, 14], [330, 95, 140, 18], [120, 150, 80, 10], [0, 118, 512, 6], [300, 128, 90, 12]].forEach(
+      ([x, y, bw, bh]) => ctx.fillRect(x, y, bw, bh)
+    );
+  });
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const env = pmrem.fromEquirectangular(texture).texture;
+  pmrem.dispose();
+  texture.dispose();
+  return env;
+}
+
 AFRAME.registerComponent("title-card", {
   schema: {
     logo: { type: "selector" },
     width: { default: 4.6 }, // metres
+    distance: { default: 4.2 }, // from the wearer's eyes, for depth compensation
+    glyphs: { default: "assets/fonts/cinzel-bold-title.json" },
   },
   init() {
-    this.mesh = null;
+    this.layers = new THREE.Group();
+    this.el.setObject3D("layers", this.layers);
+    this.sweepMaterials = [];
+    this.disposables = [];
+
     const logo = this.data.logo;
     const logoReady =
       !logo || logo.complete
@@ -1273,21 +1353,40 @@ AFRAME.registerComponent("title-card", {
             logo.addEventListener("load", resolve, { once: true });
             logo.addEventListener("error", resolve, { once: true });
           });
-    Promise.all([loadTitleFonts(), logoReady]).then(() => this.build());
+    const glyphs = fetch(this.data.glyphs)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    Promise.all([loadTitleFonts(), logoReady, glyphs]).then(([, , font]) => this.build(font));
 
     this.onLaunchCut = () => this.el.setAttribute("visible", false);
     this.onReset = () => this.el.setAttribute("visible", true);
     this.el.sceneEl.addEventListener("film-cut", this.onLaunchCut);
     this.el.sceneEl.addEventListener("ceremony-reset", this.onReset);
   },
-  build() {
+  /* Place a layer at depth z, keeping its angular size and position for the
+     wearer (and so for the LED view). yCanvas: centre row on the 2D layout. */
+  place(object, z, yCanvas) {
+    const s = (this.data.distance - z) / this.data.distance;
+    object.position.set(0, (this.H / 2 - yCanvas) * this.k * s, z);
+    object.scale.multiplyScalar(s);
+    this.layers.add(object);
+  },
+  build(font) {
     const W = 2400;
     const H = 1120;
+    this.H = H;
+    this.k = this.data.width / W; // metres per canvas pixel
+    const cx = W / 2;
+    const titleBaseline = 1066;
+    const titleSize = 196;
+    const titleSpacing = 16;
+    const renderer = this.el.sceneEl.renderer;
+
+    // ---- Text layer: ministry lines, divider, PELUNCURAN, book line ----
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d");
-    const cx = W / 2;
     const gold = (y0, y1) => {
       const g = ctx.createLinearGradient(0, y0, 0, y1);
       g.addColorStop(0, "#fcecc6");
@@ -1296,18 +1395,8 @@ AFRAME.registerComponent("title-card", {
       return g;
     };
     ctx.textBaseline = "alphabetic";
+    let y = 420;
 
-    // Emblem
-    let y = 20;
-    const logo = this.data.logo;
-    if (logo && logo.naturalWidth) {
-      const logoH = 400;
-      const logoW = (logo.naturalWidth / logo.naturalHeight) * logoH;
-      ctx.drawImage(logo, cx - logoW / 2, y, logoW, logoH);
-      y += logoH;
-    }
-
-    // Ministry / state department, as under the emblem in the JPN logo
     ctx.fillStyle = "#ffffff";
     ctx.font = "500 46px Montserrat, sans-serif";
     y += 70;
@@ -1315,7 +1404,6 @@ AFRAME.registerComponent("title-card", {
     y += 62;
     drawSpacedText(ctx, TITLE_LINES.ministry[1], cx, y, 3);
 
-    // Gold divider
     y += 64;
     const line = ctx.createLinearGradient(cx - 420, 0, cx + 420, 0);
     line.addColorStop(0, "rgba(215,166,109,0)");
@@ -1330,7 +1418,6 @@ AFRAME.registerComponent("title-card", {
     ctx.fillRect(-7, -7, 14, 14);
     ctx.restore();
 
-    // Line 1: PELUNCURAN
     y += 110;
     ctx.font = "600 72px Cinzel, serif";
     ctx.shadowColor = "rgba(215,166,109,0.55)";
@@ -1338,7 +1425,6 @@ AFRAME.registerComponent("title-card", {
     ctx.fillStyle = gold(y - 60, y);
     drawSpacedText(ctx, TITLE_LINES.kicker, cx, y, 22);
 
-    // Line 2: the book, one line, fitted to the card
     y += 110;
     ctx.shadowBlur = 10;
     ctx.shadowColor = "rgba(0,0,0,0.6)";
@@ -1351,42 +1437,142 @@ AFRAME.registerComponent("title-card", {
     }
     drawSpacedText(ctx, TITLE_LINES.book, cx, y, 3);
 
-    // Line 3: JEJAK IMPAK
-    y += 230;
-    ctx.font = "700 196px Cinzel, serif";
-    ctx.shadowColor = "rgba(236,190,120,0.75)";
-    ctx.shadowBlur = 40;
-    ctx.fillStyle = gold(y - 160, y);
-    drawSpacedText(ctx, TITLE_LINES.title, cx, y, 16);
+    // Fallback: if the 3D letters cannot be built, draw the title flat.
+    if (!font) {
+      ctx.font = `700 ${titleSize}px Cinzel, serif`;
+      ctx.shadowColor = "rgba(236,190,120,0.75)";
+      ctx.shadowBlur = 40;
+      ctx.fillStyle = gold(titleBaseline - 160, titleBaseline);
+      drawSpacedText(ctx, TITLE_LINES.title, cx, titleBaseline, titleSpacing);
+    }
     ctx.shadowBlur = 0;
 
-    const texture = srgbTexture(new THREE.CanvasTexture(canvas));
-    const renderer = this.el.sceneEl.renderer;
-    if (renderer) texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    texture.needsUpdate = true;
+    const textTexture = srgbTexture(new THREE.CanvasTexture(canvas));
+    if (renderer) textTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    textTexture.needsUpdate = true;
+    const textMaterial = new THREE.MeshBasicMaterial({
+      map: textTexture,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    });
+    this.addSweep(textMaterial, "basic");
+    const textPlane = new THREE.Mesh(new THREE.PlaneGeometry(this.data.width, (this.data.width * H) / W), textMaterial);
+    this.place(textPlane, TITLE_DEPTH.text, H / 2);
+    this.disposables.push(textPlane.geometry, textMaterial, textTexture);
 
-    const height = (this.data.width * H) / W;
-    this.mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.data.width, height),
-      new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-        fog: false,
-      })
+    // ---- Glow behind everything ----
+    const glowTexture = canvasTexture(512, 256, (g, w, h) => {
+      const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      grad.addColorStop(0, "rgba(215,166,109,0.35)");
+      grad.addColorStop(0.45, "rgba(150,110,70,0.12)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, w, h);
+    });
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.data.width * 1.05, this.data.width * 0.5),
+      additiveMaterial(glowTexture, 0.55)
     );
-    this.el.setObject3D("mesh", this.mesh);
+    this.place(glow, TITLE_DEPTH.glow, 640);
+    this.disposables.push(glow.geometry, glow.material, glowTexture);
+
+    // ---- Emblem, in front, with a soft halo just behind it ----
+    const logo = this.data.logo;
+    if (logo && logo.naturalWidth) {
+      const logoTexture = srgbTexture(new THREE.Texture(logo));
+      logoTexture.needsUpdate = true;
+      if (renderer) logoTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const logoH = 400 * this.k;
+      const logoW = (logo.naturalWidth / logo.naturalHeight) * logoH;
+      const emblem = new THREE.Mesh(
+        new THREE.PlaneGeometry(logoW, logoH),
+        new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true, depthWrite: false, toneMapped: false, fog: false })
+      );
+      this.place(emblem, TITLE_DEPTH.emblem, 220);
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(logoW * 1.7, logoH * 1.5), additiveMaterial(glowTexture, 0.5));
+      this.place(halo, TITLE_DEPTH.emblem - 0.05, 220);
+      this.disposables.push(emblem.geometry, emblem.material, logoTexture, halo.geometry, halo.material);
+    }
+
+    // ---- JEJAK IMPAK as extruded gold metal letters ----
+    if (font && renderer) {
+      const capHeight = titleSize * (font.capHeight / font.unitsPerEm) * this.k;
+      const spacingUnits = (titleSpacing / titleSize) * font.unitsPerEm;
+      const shapes = titleShapes(font, TITLE_LINES.title, capHeight, spacingUnits);
+      const depth = 0.07;
+      const geometry = new THREE.ExtrudeGeometry(shapes, {
+        depth,
+        curveSegments: 8,
+        bevelEnabled: true,
+        bevelThickness: 0.014,
+        bevelSize: 0.007,
+        bevelSegments: 3,
+      });
+      geometry.translate(0, 0, -depth / 2);
+      geometry.computeBoundingBox();
+      this.envMap = goldEnvironment(renderer);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xf2c878,
+        metalness: 1,
+        roughness: 0.24,
+        envMap: this.envMap,
+        envMapIntensity: 1.45,
+        emissive: 0x3a2508,
+      });
+      this.addSweep(material, "standard", geometry.boundingBox);
+      const letters = new THREE.Mesh(geometry, material);
+      // The shapes sit on the baseline; place the baseline where the 2D layout had it.
+      const s = (this.data.distance - TITLE_DEPTH.title) / this.data.distance;
+      letters.position.set(0, (H / 2 - titleBaseline) * this.k * s, TITLE_DEPTH.title);
+      letters.scale.setScalar(s);
+      this.layers.add(letters);
+      this.disposables.push(geometry, material, this.envMap);
+    }
+  },
+  /* Add the periodic light sweep to a material. */
+  addSweep(material, kind, box) {
+    const uniforms = { uSweep: { value: 9 }, uMinX: { value: box ? box.min.x : 0 }, uMaxX: { value: box ? box.max.x : 1 } };
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      if (kind === "basic") {
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nuniform float uSweep;")
+          .replace(
+            "#include <map_fragment>",
+            `#include <map_fragment>
+            float sweepD = (vMapUv.x + (1.0 - vMapUv.y) * 0.25) - uSweep;
+            diffuseColor.rgb += exp(-sweepD * sweepD / 0.004) * 1.1 * diffuseColor.a * vec3(1.0, 0.9, 0.72);`
+          );
+      } else {
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nuniform float uMinX;\nuniform float uMaxX;\nvarying float vSweepX;")
+          .replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvSweepX = (position.x - uMinX) / (uMaxX - uMinX) + position.y * 0.9;"
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nuniform float uSweep;\nvarying float vSweepX;")
+          .replace(
+            "#include <emissivemap_fragment>",
+            `#include <emissivemap_fragment>
+            float sweepD = vSweepX - uSweep;
+            totalEmissiveRadiance += exp(-sweepD * sweepD / 0.008) * vec3(1.0, 0.82, 0.5) * 3.2;`
+          );
+      }
+    };
+    this.sweepMaterials.push(uniforms);
+  },
+  tick(time) {
+    const sweep = titleSweep(time / 1000);
+    for (const u of this.sweepMaterials) u.uSweep.value = sweep;
   },
   remove() {
     this.el.sceneEl.removeEventListener("film-cut", this.onLaunchCut);
     this.el.sceneEl.removeEventListener("ceremony-reset", this.onReset);
-    if (this.mesh) {
-      this.mesh.geometry.dispose();
-      this.mesh.material.map.dispose();
-      this.mesh.material.dispose();
-      this.el.removeObject3D("mesh");
-    }
+    this.disposables.forEach((d) => d.dispose && d.dispose());
+    this.el.removeObject3D("layers");
   },
 });
 

@@ -61,6 +61,7 @@
 - 头显银幕：弧形 72°，中心在视线下方 12°（嘉宾触碰光球时往下看约 22°，闪光后银幕仍在眼前；抬头平视看 69 秒影片也舒服）。
 - 播放保护：`play()` 被拒绝时不放弃，银幕照常显示并重试；手势触碰不算用户手势，但操作员之前点过网页（选文件、进入 VR），浏览器一般允许有声播放；万一被拒则改静音播放，不会卡住。操作员在场景重新对准期间按 Space 启动，会先把场景锁定在当前视线。
 - 标题卡 `title-card`（光球上方，距离 4.2 米、中心在视线上方 11°、宽 4.6 米）：JPN 国徽（`assets/logo-jata-negara.png`，由 `python tools/make-logo.py` 从 `assets/logo-jpn-source.png` 去白底生成，盾牌内的白色保留）+ 白色 KEMENTERIAN PENDIDIKAN / JABATAN PENDIDIKAN NEGERI PERAK + 金色 PELUNCURAN + BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME（单行）+ 大号 JEJAK IMPAK。文字用真实字体 Cinzel / Montserrat（SIL OFL，`assets/fonts/`）在画布上排版；切到影片时隐藏，Esc 复位后重新显示。
+  - 立体处理：分层景深（`TITLE_DEPTH`：国徽最前 +0.35 m、小字 0、JEJAK IMPAK −0.2 m、金色光晕 −0.6 m，按距离缩放，LED 单眼画面布局不变）；JEJAK IMPAK 是挤出的 3D 金属字（字形由 `python tools/make-title-glyphs.py` 从 Cinzel Bold 导出到 `assets/fonts/cinzel-bold-title.json`，需要 fontTools + skia-pathops；读取失败时退回平面字）；金字和文字每 6 秒有一道扫光。
 - 素材重新生成：`sh tools/make-assets.sh`（需要 ffmpeg + node）。
 - 点击时间轴：0–300ms 光球放大变亮 → 300ms 闪光全白（此时切到影片银幕）→ 420–1120ms 闪光淡出。动画都在 `tick()` 里跑（Quest 沉浸模式下 `requestAnimationFrame` 不运行）。
 - 彩排调光球大小：`index.html?orbScale=1.12`（桌面 80° 视角下 1.12 ≈ 首帧的 31%；以 LED 上的投屏画面为准）。
