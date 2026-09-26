@@ -106,7 +106,8 @@ test("the title is layered in depth, with JEJAK IMPAK as extruded gold letters a
   assert.match(launch, /const TITLE_DEPTH = \{ emblem: 0\.35, book: 0\.15, text: 0, title: -0\.2, glow: -0\.6 \}/);
   // Line 2 (the book) is the highlight, kept on one line; JEJAK IMPAK is smaller.
   assert.match(launch, /drawSpacedText\(b, TITLE_LINES\.book, BW \/ 2, bookBaselineInCanvas, 2\)/);
-  assert.match(launch, /const titleSize = 129;/);
+  assert.match(launch, /const titleSize = 100;/);
+  assert.match(launch, /ctx\.font = "600 100px Cinzel, serif";/);
   assert.match(launch, /new THREE\.ExtrudeGeometry\(shapes/);
   assert.match(launch, /glyphs: \{ default: "assets\/fonts\/title-glyphs\.json" \}/);
   assert.match(launch, /shapes\.push\(brushSwoosh\(width, capHeight\)\)/);

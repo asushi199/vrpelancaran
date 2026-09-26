@@ -1405,9 +1405,9 @@ AFRAME.registerComponent("title-card", {
     this.k = this.data.width / W; // metres per canvas pixel
     const cx = W / 2;
     // Line 2 (the book) is the highlight; JEJAK IMPAK is a smaller subtitle.
-    const bookBaseline = 851;
+    const bookBaseline = 881;
     const titleBaseline = 1010;
-    const titleSize = 129; // Kaushan Script: capitals ~92px tall
+    const titleSize = 100; // Kaushan Script: capitals ~71px tall
     const titleSpacing = 0;
     const renderer = this.el.sceneEl.renderer;
 
@@ -1447,12 +1447,12 @@ AFRAME.registerComponent("title-card", {
     ctx.fillRect(-7, -7, 14, 14);
     ctx.restore();
 
-    y += 110;
-    ctx.font = "600 72px Cinzel, serif";
+    y += 140;
+    ctx.font = "600 100px Cinzel, serif";
     ctx.shadowColor = "rgba(215,166,109,0.55)";
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = gold(y - 60, y);
-    drawSpacedText(ctx, TITLE_LINES.kicker, cx, y, 22);
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = gold(y - 80, y);
+    drawSpacedText(ctx, TITLE_LINES.kicker, cx, y, 30);
 
     // Fallback: if the 3D letters cannot be built, draw the title flat.
     if (!font) {
