@@ -60,6 +60,7 @@
 - 背景动态（天空本身不动，避免嘉宾晕眩）：`galaxy-sky` 银河亮度缓慢流动、`galaxy-stars` 星星闪烁、`shooting-stars` 流星：所有流星平行地从右上往左下划过（`fallAngle` 默认水平以下 55°，按每颗流星所在位置的本地水平线计算，所以看起来平行）；光球出现约 1 秒后先来一场 14–17 颗的开场流星雨，之后每 3–6 秒一颗、每 18–28 秒一场 9–12 颗；起点在嘉宾低头看光球时的视野内（仰角 -12~28°、左右 ±70°），整条路径避开光球 26° 内；启动后停止；每次场景重新锁定都会重新开场、`space-dust` 身边 2–12 米的飘浮微尘（启动后淡出，不挡影片）。
 - 头显银幕：弧形 72°，中心在视线下方 12°（嘉宾触碰光球时往下看约 22°，闪光后银幕仍在眼前；抬头平视看 69 秒影片也舒服）。
 - 播放保护：`play()` 被拒绝时不放弃，银幕照常显示并重试；手势触碰不算用户手势，但操作员之前点过网页（选文件、进入 VR），浏览器一般允许有声播放；万一被拒则改静音播放，不会卡住。操作员在场景重新对准期间按 Space 启动，会先把场景锁定在当前视线。
+- 标题卡 `title-card`（光球上方，距离 4.2 米、中心在视线上方 11°、宽 4.6 米）：JPN 国徽（`assets/logo-jata-negara.png`，由 `python tools/make-logo.py` 从 `assets/logo-jpn-source.png` 去白底生成，盾牌内的白色保留）+ 白色 KEMENTERIAN PENDIDIKAN / JABATAN PENDIDIKAN NEGERI PERAK + 金色 PELUNCURAN + BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME（单行）+ 大号 JEJAK IMPAK。文字用真实字体 Cinzel / Montserrat（SIL OFL，`assets/fonts/`）在画布上排版；切到影片时隐藏，Esc 复位后重新显示。
 - 素材重新生成：`sh tools/make-assets.sh`（需要 ffmpeg + node）。
 - 点击时间轴：0–300ms 光球放大变亮 → 300ms 闪光全白（此时切到影片银幕）→ 420–1120ms 闪光淡出。动画都在 `tick()` 里跑（Quest 沉浸模式下 `requestAnimationFrame` 不运行）。
 - 彩排调光球大小：`index.html?orbScale=1.12`（桌面 80° 视角下 1.12 ≈ 首帧的 31%；以 LED 上的投屏画面为准）。

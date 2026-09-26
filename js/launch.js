@@ -1211,6 +1211,186 @@ AFRAME.registerComponent("ceremony-orb", {
 });
 
 /* =============================================================
+   title-card — the JPN Perak emblem and the launch title, set in real
+   fonts (Cinzel, Montserrat; OFL, bundled in assets/fonts) on a canvas
+   texture above the orb. Hidden behind the flash when the film starts.
+   ============================================================= */
+const TITLE_LINES = {
+  ministry: ["KEMENTERIAN PENDIDIKAN", "JABATAN PENDIDIKAN NEGERI PERAK"],
+  kicker: "PELUNCURAN",
+  book: "BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME",
+  title: "JEJAK IMPAK",
+};
+
+const TITLE_FONTS = [
+  ["Cinzel", "assets/fonts/Cinzel-VariableFont_wght.ttf", "400 900"],
+  ["Montserrat", "assets/fonts/Montserrat-VariableFont_wght.ttf", "100 900"],
+];
+
+function loadTitleFonts() {
+  if (!window.FontFace || !document.fonts) return Promise.resolve();
+  return Promise.all(
+    TITLE_FONTS.map(([family, url, weight]) =>
+      new FontFace(family, `url(${url})`, { weight })
+        .load()
+        .then((face) => document.fonts.add(face))
+        .catch(() => {})
+    )
+  );
+}
+
+/* Draw text with extra letter spacing, centred on x (canvas letterSpacing is
+   not available in every browser). */
+function drawSpacedText(ctx, text, x, y, spacing) {
+  const chars = [...text];
+  const widths = chars.map((c) => ctx.measureText(c).width);
+  const total = widths.reduce((a, b) => a + b, 0) + spacing * (chars.length - 1);
+  let cursor = x - total / 2;
+  ctx.textAlign = "left";
+  chars.forEach((c, i) => {
+    ctx.fillText(c, cursor, y);
+    cursor += widths[i] + spacing;
+  });
+  return total;
+}
+
+function spacedWidth(ctx, text, spacing) {
+  return [...text].reduce((w, c) => w + ctx.measureText(c).width, 0) + spacing * ([...text].length - 1);
+}
+
+AFRAME.registerComponent("title-card", {
+  schema: {
+    logo: { type: "selector" },
+    width: { default: 4.6 }, // metres
+  },
+  init() {
+    this.mesh = null;
+    const logo = this.data.logo;
+    const logoReady =
+      !logo || logo.complete
+        ? Promise.resolve()
+        : new Promise((resolve) => {
+            logo.addEventListener("load", resolve, { once: true });
+            logo.addEventListener("error", resolve, { once: true });
+          });
+    Promise.all([loadTitleFonts(), logoReady]).then(() => this.build());
+
+    this.onLaunchCut = () => this.el.setAttribute("visible", false);
+    this.onReset = () => this.el.setAttribute("visible", true);
+    this.el.sceneEl.addEventListener("film-cut", this.onLaunchCut);
+    this.el.sceneEl.addEventListener("ceremony-reset", this.onReset);
+  },
+  build() {
+    const W = 2400;
+    const H = 1120;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    const cx = W / 2;
+    const gold = (y0, y1) => {
+      const g = ctx.createLinearGradient(0, y0, 0, y1);
+      g.addColorStop(0, "#fcecc6");
+      g.addColorStop(0.45, "#e6bd7a");
+      g.addColorStop(1, "#c4935a");
+      return g;
+    };
+    ctx.textBaseline = "alphabetic";
+
+    // Emblem
+    let y = 20;
+    const logo = this.data.logo;
+    if (logo && logo.naturalWidth) {
+      const logoH = 400;
+      const logoW = (logo.naturalWidth / logo.naturalHeight) * logoH;
+      ctx.drawImage(logo, cx - logoW / 2, y, logoW, logoH);
+      y += logoH;
+    }
+
+    // Ministry / state department, as under the emblem in the JPN logo
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "500 46px Montserrat, sans-serif";
+    y += 70;
+    drawSpacedText(ctx, TITLE_LINES.ministry[0], cx, y, 3);
+    y += 62;
+    drawSpacedText(ctx, TITLE_LINES.ministry[1], cx, y, 3);
+
+    // Gold divider
+    y += 64;
+    const line = ctx.createLinearGradient(cx - 420, 0, cx + 420, 0);
+    line.addColorStop(0, "rgba(215,166,109,0)");
+    line.addColorStop(0.5, "rgba(236,196,130,0.95)");
+    line.addColorStop(1, "rgba(215,166,109,0)");
+    ctx.fillStyle = line;
+    ctx.fillRect(cx - 420, y, 840, 3);
+    ctx.save();
+    ctx.translate(cx, y + 1.5);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = "#e6bd7a";
+    ctx.fillRect(-7, -7, 14, 14);
+    ctx.restore();
+
+    // Line 1: PELUNCURAN
+    y += 110;
+    ctx.font = "600 72px Cinzel, serif";
+    ctx.shadowColor = "rgba(215,166,109,0.55)";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = gold(y - 60, y);
+    drawSpacedText(ctx, TITLE_LINES.kicker, cx, y, 22);
+
+    // Line 2: the book, one line, fitted to the card
+    y += 110;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.fillStyle = "#fbf6ea";
+    let size = 64;
+    ctx.font = `600 ${size}px Montserrat, sans-serif`;
+    while (size > 30 && spacedWidth(ctx, TITLE_LINES.book, 3) > W - 120) {
+      size -= 1;
+      ctx.font = `600 ${size}px Montserrat, sans-serif`;
+    }
+    drawSpacedText(ctx, TITLE_LINES.book, cx, y, 3);
+
+    // Line 3: JEJAK IMPAK
+    y += 230;
+    ctx.font = "700 196px Cinzel, serif";
+    ctx.shadowColor = "rgba(236,190,120,0.75)";
+    ctx.shadowBlur = 40;
+    ctx.fillStyle = gold(y - 160, y);
+    drawSpacedText(ctx, TITLE_LINES.title, cx, y, 16);
+    ctx.shadowBlur = 0;
+
+    const texture = srgbTexture(new THREE.CanvasTexture(canvas));
+    const renderer = this.el.sceneEl.renderer;
+    if (renderer) texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texture.needsUpdate = true;
+
+    const height = (this.data.width * H) / W;
+    this.mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.data.width, height),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+        fog: false,
+      })
+    );
+    this.el.setObject3D("mesh", this.mesh);
+  },
+  remove() {
+    this.el.sceneEl.removeEventListener("film-cut", this.onLaunchCut);
+    this.el.sceneEl.removeEventListener("ceremony-reset", this.onReset);
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.material.map.dispose();
+      this.mesh.material.dispose();
+      this.el.removeObject3D("mesh");
+    }
+  },
+});
+
+/* =============================================================
    launch-flash — head-locked white-gold flash that hides the cut
    from the orb to the film (and cues the LED operator)
    ============================================================= */
@@ -1935,6 +2115,7 @@ AFRAME.registerComponent("launch-sequence", {
   },
 
   cutToFilm() {
+    this.el.emit("film-cut");
     if (this.orbGroup) this.orbGroup.object3D.visible = false;
     if (this.dimmer) {
       // Draw the dimmer over the stars (-2) but under the film screen (0).
@@ -1981,6 +2162,7 @@ AFRAME.registerComponent("launch-sequence", {
     if (dissolve) dissolve.reset();
 
     this.el.removeState("launched");
+    this.el.emit("ceremony-reset");
     this.el.emit("recenter-standby");
     if (this.hint && !this.el.is("vr-mode")) this.hint.style.display = "";
   },

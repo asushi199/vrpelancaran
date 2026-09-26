@@ -86,6 +86,19 @@ test("all meteors fall the same way (upper right to lower left), clear of the or
   assert.doesNotMatch(launch, /radiant/);
 });
 
+test("the title card shows the JPN emblem and the three launch lines in real fonts", () => {
+  const launch = read("js/launch.js");
+  const html = read("index.html");
+  assert.match(html, /src="assets\/logo-jata-negara\.png"/);
+  assert.match(html, /title-card="logo: #jpnLogo/);
+  assert.match(launch, /kicker: "PELUNCURAN"/);
+  assert.match(launch, /book: "BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME"/);
+  assert.match(launch, /title: "JEJAK IMPAK"/);
+  assert.match(launch, /ministry: \["KEMENTERIAN PENDIDIKAN", "JABATAN PENDIDIKAN NEGERI PERAK"\]/);
+  assert.match(launch, /assets\/fonts\/Cinzel-VariableFont_wght\.ttf/);
+  assert.match(launch, /this\.el\.emit\("film-cut"\)/);
+});
+
 test("service worker caches only the lightweight app shell", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);
