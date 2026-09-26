@@ -114,13 +114,12 @@ const SFX = (() => {
 })();
 
 
-/* Rehearsal tuning via URL, e.g. index.html?orbScale=1.15&filmAudio=1
+/* Rehearsal tuning via URL, e.g. index.html?orbScale=1.15&filmAudio=0
    orbScale  — orb size multiplier; match the orb on the LED to the film's first frame.
-   filmAudio — play the film's sound in the headset too (default: muted, the LED PC
-               carries the ceremony audio). */
+   filmAudio — the headset plays the film with sound; filmAudio=0 mutes it. */
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const ORB_SCALE = Math.min(2, Math.max(0.5, parseFloat(URL_PARAMS.get("orbScale")) || 1));
-const FILM_AUDIO = ["1", "true"].includes((URL_PARAMS.get("filmAudio") || "").toLowerCase());
+const FILM_AUDIO = !["0", "false"].includes((URL_PARAMS.get("filmAudio") || "").toLowerCase());
 
 const easeInQuad = (t) => t * t;
 const easeInCubic = (t) => t * t * t;
@@ -736,33 +735,127 @@ AFRAME.registerComponent("space-dust", {
 
 /* =============================================================
    ceremony-orb — the golden crystal orb, matched to the first frame
-   of Peluncuran.mp4: the orb cut from that frame (billboarded,
-   additive), a horizontal lens streak, a breathing core, and gold
-   motes swirling inside the glass for depth in the headset
+   of Peluncuran.mp4 and built to read as a solid object in stereo:
+   - a real 3D glass shell (front + back faces) whose gold fresnel rim
+     and highlights are computed per eye, so each eye sees its own
+     silhouette and reflections
+   - the light inside the orb, cut from the film's first frame, on
+     three billboards spread through the sphere's depth
+   - gold motes swirling through the whole volume
+   - a soft outer halo and the horizontal lens streak
    ============================================================= */
-// Glass shell diameter as a fraction of orb-sprite.png's width (340px of 768px).
+// Glass shell diameter as a fraction of orb-interior.png's width (340px of 768px).
 const ORB_SHELL_FRACTION = 340 / 768;
+
+const ORB_SHELL_VERTEX = `
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = world.xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+const ORB_SHELL_FRAGMENT = `
+  uniform vec3 uRimColor;
+  uniform vec3 uSpecColor;
+  uniform vec3 uLight1;
+  uniform vec3 uLight2;
+  uniform float uStrength;
+  uniform float uBoost;
+  uniform float uNormalSign;
+  varying vec3 vWorldNormal;
+  varying vec3 vWorldPosition;
+  void main() {
+    // Explicit sign: three.js flips the winding for BackSide, so gl_FrontFacing
+    // is true there too and cannot tell the far side of the shell apart.
+    vec3 N = normalize(vWorldNormal) * uNormalSign;
+    // cameraPosition is the eye being rendered: the rim differs per eye.
+    vec3 V = normalize(cameraPosition - vWorldPosition);
+    float ndv = clamp(dot(N, V), 0.0, 1.0);
+    float edge = 1.0 - ndv;
+    // rho: distance from the orb's centre as seen by this eye (1 = silhouette).
+    // A gold band brightening toward the outer ~12% of the radius (as measured
+    // on the film's first frame: 158–178px of a 178px radius), plus a
+    // faint inner glow so the light inside meets the glass without a gap.
+    float rho = sqrt(1.0 - ndv * ndv);
+    float band = smoothstep(0.86, 1.0, rho);
+    float rim = band * band * 0.95 + smoothstep(0.55, 0.95, rho) * 0.12;
+    // Window-like reflections, kept toward the rim as arcs (as in the film).
+    vec3 R = reflect(-V, N);
+    float spec = pow(max(dot(R, uLight1), 0.0), 26.0) * 1.1 + pow(max(dot(R, uLight2), 0.0), 18.0) * 0.7;
+    spec *= smoothstep(0.2, 0.7, edge);
+    vec3 color = (uRimColor * rim + uSpecColor * spec) * uStrength * (1.0 + uBoost * 0.8);
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
 
 AFRAME.registerComponent("ceremony-orb", {
   schema: {
     src: { type: "selector" },
     diameter: { default: 0.38 },
-    motes: { default: 260 },
+    motes: { default: 700 },
   },
   init() {
     const D = this.data.diameter;
+    const R = D / 2;
     this.boost = 0;
     this.cameraPosition = new THREE.Vector3();
+    this.worldQuaternion = new THREE.Quaternion();
+    this.light1 = new THREE.Vector3(-0.6, 0.62, 0.5).normalize();
+    this.light2 = new THREE.Vector3(0.66, -0.52, 0.52).normalize();
     this.billboard = new THREE.Group();
     this.el.object3D.add(this.billboard);
 
+    // Outer halo (behind everything else in the billboard)
+    const glowTexture = canvasTexture(256, 256, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      g.addColorStop(0, "rgba(252,236,198,0.10)");
+      g.addColorStop(0.3, "rgba(236,190,120,0.26)");
+      g.addColorStop(0.36, "rgba(215,166,109,0.2)");
+      g.addColorStop(0.5, "rgba(170,120,70,0.07)");
+      g.addColorStop(0.75, "rgba(120,90,60,0.02)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+    this.glow = new THREE.Mesh(new THREE.PlaneGeometry(D * 3, D * 3), additiveMaterial(glowTexture, 0.9));
+    this.glow.position.z = -R * 1.1;
+    this.billboard.add(this.glow);
+
+    // The light inside the orb, on three layers through its depth. Nearer layers
+    // are scaled down so the single-eye (LED) view still matches the film.
     const image = this.data.src;
-    const spriteTexture = srgbTexture(new THREE.Texture(image));
-    if (image && image.complete) spriteTexture.needsUpdate = true;
-    else if (image) image.addEventListener("load", () => (spriteTexture.needsUpdate = true), { once: true });
+    const interiorTexture = srgbTexture(new THREE.Texture(image));
+    if (image && image.complete) interiorTexture.needsUpdate = true;
+    else if (image) image.addEventListener("load", () => (interiorTexture.needsUpdate = true), { once: true });
     const spriteSize = D / ORB_SHELL_FRACTION;
-    this.sprite = new THREE.Mesh(new THREE.PlaneGeometry(spriteSize, spriteSize), additiveMaterial(spriteTexture, 1));
-    this.billboard.add(this.sprite);
+    const eyeDistance = 0.81;
+    this.interior = [-0.45, 0, 0.45].map((depth, i) => {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(spriteSize, spriteSize),
+        additiveMaterial(interiorTexture, i === 1 ? 0.5 : 0.32)
+      );
+      mesh.position.z = depth * R;
+      mesh.scale.setScalar((eyeDistance - depth * R) / eyeDistance);
+      this.billboard.add(mesh);
+      return mesh;
+    });
+
+    const coreTexture = canvasTexture(256, 256, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      g.addColorStop(0, "rgba(252,251,241,1)");
+      g.addColorStop(0.25, "rgba(252,236,198,0.75)");
+      g.addColorStop(0.6, "rgba(215,166,109,0.22)");
+      g.addColorStop(1, "rgba(215,166,109,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+    this.core = new THREE.Mesh(new THREE.PlaneGeometry(D * 0.7, D * 0.7), additiveMaterial(coreTexture, 0.25));
+    this.core.position.z = 0.004;
+    this.billboard.add(this.core);
 
     const streakTexture = canvasTexture(1024, 64, (ctx, w, h) => {
       const pixels = ctx.createImageData(w, h);
@@ -780,29 +873,46 @@ AFRAME.registerComponent("ceremony-orb", {
       }
       ctx.putImageData(pixels, 0, 0);
     });
+    // In front of the shell, like a flare on the camera lens.
     this.streak = new THREE.Mesh(new THREE.PlaneGeometry(D * 5.2, D * 0.1), additiveMaterial(streakTexture, 0.5));
-    this.streak.position.z = 0.002;
+    this.streak.position.z = R * 1.1;
     this.billboard.add(this.streak);
 
-    const coreTexture = canvasTexture(256, 256, (ctx, w, h) => {
-      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      g.addColorStop(0, "rgba(252,251,241,1)");
-      g.addColorStop(0.25, "rgba(252,236,198,0.75)");
-      g.addColorStop(0.6, "rgba(215,166,109,0.22)");
-      g.addColorStop(1, "rgba(215,166,109,0)");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-    });
-    this.core = new THREE.Mesh(new THREE.PlaneGeometry(D * 0.7, D * 0.7), additiveMaterial(coreTexture, 0.25));
-    this.core.position.z = 0.004;
-    this.billboard.add(this.core);
+    // Real 3D glass shell: back faces first (the far side seen through the glass).
+    const shellGeometry = new THREE.SphereGeometry(R * 1.035, 64, 48);
+    const shellMaterial = (side, strength) =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uRimColor: { value: new THREE.Color(0.92, 0.58, 0.22) },
+          uSpecColor: { value: new THREE.Color(1.0, 0.94, 0.8) },
+          uLight1: { value: new THREE.Vector3() },
+          uLight2: { value: new THREE.Vector3() },
+          uStrength: { value: strength },
+          uBoost: { value: 0 },
+          uNormalSign: { value: side === THREE.BackSide ? -1 : 1 },
+        },
+        vertexShader: ORB_SHELL_VERTEX,
+        fragmentShader: ORB_SHELL_FRAGMENT,
+        side,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+    this.shellBack = new THREE.Mesh(shellGeometry, shellMaterial(THREE.BackSide, 0.35));
+    this.shellFront = new THREE.Mesh(shellGeometry, shellMaterial(THREE.FrontSide, 1));
+    this.shellBack.renderOrder = 1;
+    this.shellFront.renderOrder = 3;
+    this.el.object3D.add(this.shellBack);
+    this.el.object3D.add(this.shellFront);
 
     this.motes = this.createMotes(D);
+    this.motes.renderOrder = 2;
     this.el.object3D.add(this.motes);
   },
   createMotes(D) {
     const rand = seededRandom(3303);
     const count = this.data.motes;
+    const maxRadius = D * 0.47;
     const radius = new Float32Array(count);
     const theta = new Float32Array(count);
     const height = new Float32Array(count);
@@ -812,16 +922,18 @@ AFRAME.registerComponent("ceremony-orb", {
     const colors = new Float32Array(count * 3);
     const color = new THREE.Color();
     for (let i = 0; i < count; i++) {
-      const r = D * 0.44 * Math.pow(rand(), 0.55);
+      // Fill the whole volume (slightly denser toward the core).
+      const r = maxRadius * Math.pow(rand(), 0.42);
       const lat = Math.asin(rand() * 2 - 1);
       radius[i] = r * Math.cos(lat);
       height[i] = r * Math.sin(lat);
       theta[i] = rand() * Math.PI * 2;
       // Inner motes orbit faster, like the swirl in the film.
-      speed[i] = (0.25 + rand() * 0.35) * (1.4 - r / (D * 0.44));
-      sizes[i] = 0.0016 + Math.pow(rand(), 3) * 0.0034;
+      speed[i] = (0.22 + rand() * 0.3) * (1.5 - r / maxRadius);
+      const sparkle = rand() > 0.94;
+      sizes[i] = sparkle ? 0.005 + rand() * 0.003 : 0.0014 + Math.pow(rand(), 2.5) * 0.003;
       phases[i] = rand() * Math.PI * 2;
-      color.set(rand() > 0.55 ? "#fcecc6" : "#d7a66d");
+      color.set(sparkle ? "#fcfbf1" : rand() > 0.5 ? "#fcecc6" : "#d7a66d");
       colors[i * 3] = color.r;
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
@@ -854,7 +966,7 @@ AFRAME.registerComponent("ceremony-orb", {
           vec3 p = vec3(cos(angle) * aRadius, aHeight + sin(uTime * 0.6 + aPhase) * 0.004, sin(angle) * aRadius);
           vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
           gl_Position = projectionMatrix * mvPosition;
-          gl_PointSize = clamp(aSize * uFocal / max(0.05, -mvPosition.z), 1.0, 7.0);
+          gl_PointSize = clamp(aSize * uFocal / max(0.05, -mvPosition.z), 1.0, 9.0);
           vAlpha = 0.45 + 0.55 * (0.5 + 0.5 * sin(uTime * 2.1 + aPhase * 3.0));
           vColor = color;
         }
@@ -867,7 +979,7 @@ AFRAME.registerComponent("ceremony-orb", {
           float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
           if (d > 1.0) discard;
           float glow = pow(1.0 - d, 1.6);
-          gl_FragColor = vec4(vColor * (1.0 + uBoost), glow * vAlpha * 0.8);
+          gl_FragColor = vec4(vColor * (1.0 + uBoost), glow * vAlpha * 0.85);
         }
       `,
       transparent: true,
@@ -891,10 +1003,22 @@ AFRAME.registerComponent("ceremony-orb", {
       this.billboard.lookAt(this.cameraPosition);
     }
     const b = this.boost;
-    this.sprite.material.color.setScalar(1 + b * 0.8);
+    this.interior.forEach((mesh) => mesh.material.color.setScalar(1 + b * 0.8));
     this.core.material.opacity = 0.22 + 0.07 * Math.sin(t * 1.15) + b * 0.6;
     this.core.scale.setScalar(1 + 0.04 * Math.sin(t * 1.15) + b * 0.5);
     this.streak.material.opacity = 0.46 + 0.06 * Math.sin(t * 0.8 + 1.3) + b * 0.5;
+    this.glow.material.opacity = 0.9 + 0.08 * Math.sin(t * 1.15) + b * 0.6;
+
+    // Reflections are fixed to the ceremony (not the head), so they shift
+    // naturally as the wearer moves, like light on real glass.
+    this.el.object3D.getWorldQuaternion(this.worldQuaternion);
+    for (const shell of [this.shellBack, this.shellFront]) {
+      const u = shell.material.uniforms;
+      u.uLight1.value.copy(this.light1).applyQuaternion(this.worldQuaternion);
+      u.uLight2.value.copy(this.light2).applyQuaternion(this.worldQuaternion);
+      u.uBoost.value = b;
+    }
+
     this.moteMaterial.uniforms.uTime.value = t;
     this.moteMaterial.uniforms.uBoost.value = b;
     const renderer = this.el.sceneEl.renderer;
@@ -903,11 +1027,16 @@ AFRAME.registerComponent("ceremony-orb", {
   remove() {
     this.el.object3D.remove(this.billboard);
     this.el.object3D.remove(this.motes);
-    [this.sprite, this.streak, this.core].forEach((mesh) => {
+    this.el.object3D.remove(this.shellBack);
+    this.el.object3D.remove(this.shellFront);
+    [this.glow, this.core, this.streak, ...this.interior].forEach((mesh) => {
       mesh.geometry.dispose();
       if (mesh.material.map) mesh.material.map.dispose();
       mesh.material.dispose();
     });
+    this.shellFront.geometry.dispose();
+    this.shellBack.material.dispose();
+    this.shellFront.material.dispose();
     this.motes.geometry.dispose();
     this.moteMaterial.dispose();
   },
@@ -1591,8 +1720,10 @@ AFRAME.registerComponent("launch-sequence", {
   },
 
   /* A failed play() must not cost us the film: keep the screen (it shows the
-     orb frame while paused) and retry. A bare-hand touch is not a user gesture,
-     so unmuted playback (?filmAudio=1) can be refused: fall back to muted. */
+     orb frame while paused) and retry. A bare-hand touch is not a user gesture;
+     sound normally still plays because the operator already tapped the page
+     (choosing the file, Enter VR). If the browser refuses sound anyway, play
+     muted rather than freeze. */
   playFilm() {
     const video = this.video;
     if (!video || !this.fired || !video.paused) return;

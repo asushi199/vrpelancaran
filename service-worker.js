@@ -1,4 +1,4 @@
-const CACHE_NAME = "vr-pelancaran-shell-v4";
+const CACHE_NAME = "vr-pelancaran-shell-v5";
 const SHELL_URLS = [
   "./",
   "index.html",
@@ -6,7 +6,7 @@ const SHELL_URLS = [
   "js/local-media.js",
   "js/launch.js",
   "vendor/aframe.min.js",
-  "assets/orb-sprite.png",
+  "assets/orb-interior.png",
   "assets/sky-galaxy.jpg",
 ].map((path) => new URL(path, self.registration.scope).toString());
 

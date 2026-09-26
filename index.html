@@ -9,7 +9,7 @@
     <script src="vendor/aframe.min.js"></script>
     <script src="js/sky-band.js"></script>
     <script src="js/local-media.js" defer></script>
-    <script src="js/launch.js?v=20260926-prime9" defer></script>
+    <script src="js/launch.js?v=20260926-prime14" defer></script>
 
     <style>
       html,
@@ -148,18 +148,17 @@
       <a-assets>
         <!--
           CEREMONY FILM (Peluncuran.mp4), chosen from the Quest's local storage.
-          Muted in the headset: the LED PC plays the same film with sound.
+          Plays with sound in the headset (?filmAudio=0 mutes it).
         -->
         <video
           id="openingVideo"
           preload="none"
-          muted
           playsinline
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
         <!-- Built by tools/make-assets.sh from the film's first frame -->
-        <img id="orbSprite" src="assets/orb-sprite.png" />
+        <img id="orbInterior" src="assets/orb-interior.png" />
         <img id="skyTexture" src="assets/sky-galaxy.jpg" />
       </a-assets>
 
@@ -198,7 +197,7 @@
         </a-entity>
 
         <!-- ============ GOLDEN ORB (the touch target) ============ -->
-        <a-entity id="orbGroup" position="0 -0.3 -0.75" ceremony-orb="src: #orbSprite; diameter: 0.38">
+        <a-entity id="orbGroup" position="0 -0.3 -0.75" ceremony-orb="src: #orbInterior; diameter: 0.38">
           <a-sphere
             id="orb"
             class="clickable"
