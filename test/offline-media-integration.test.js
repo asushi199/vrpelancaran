@@ -79,6 +79,13 @@ test("a meteor shower opens the scene right after the orb appears", () => {
   assert.match(launch, /addEventListener\("standby-locked", this\.onLocked\)/);
 });
 
+test("all meteors fall the same way (upper right to lower left), clear of the orb", () => {
+  const launch = read("js/launch.js");
+  assert.match(launch, /fallAngle: \{ default: 55 \}/);
+  assert.match(launch, /const tangent = right\.multiplyScalar\(-Math\.cos\(fall\)\)\.addScaledVector\(up, -Math\.sin\(fall\)\)/);
+  assert.doesNotMatch(launch, /radiant/);
+});
+
 test("service worker caches only the lightweight app shell", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);
