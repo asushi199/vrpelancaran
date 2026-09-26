@@ -488,15 +488,24 @@ AFRAME.registerComponent("galaxy-sky", {
 });
 
 /* =============================================================
-   shooting-stars — an occasional gold-white meteor, kept away from
-   the orb so it never steals the moment. Paused once launched.
+   shooting-stars — gold-white meteors, kept away from the orb so they
+   never steal the moment. A big meteor shower opens the scene about a
+   second after the orb appears (so the guest sees it before touching
+   the orb), then single meteors every few seconds and another shower
+   from a common radiant now and then. Paused once launched.
    ============================================================= */
 AFRAME.registerComponent("shooting-stars", {
   schema: {
     radius: { default: 300 },
-    minGap: { default: 5000 },
-    maxGap: { default: 10000 },
-    avoidOrb: { default: 32 },
+    pool: { default: 12 },
+    minGap: { default: 3000 },
+    maxGap: { default: 6000 },
+    showerMinGap: { default: 18000 },
+    showerMaxGap: { default: 28000 },
+    showerSize: { default: 6 },
+    openingShowerSize: { default: 10 },
+    firstShower: { default: 1000 },
+    avoidOrb: { default: 30 },
   },
   init() {
     const texture = canvasTexture(256, 16, (ctx, w, h) => {
@@ -518,7 +527,7 @@ AFRAME.registerComponent("shooting-stars", {
       ctx.putImageData(pixels, 0, 0);
     });
 
-    this.meteors = [0, 1].map(() => {
+    this.meteors = Array.from({ length: this.data.pool }, () => {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), additiveMaterial(texture, 0));
       mesh.visible = false;
       mesh.renderOrder = -2;
@@ -536,47 +545,108 @@ AFRAME.registerComponent("shooting-stars", {
       };
     });
     this.forward = new THREE.Vector3().fromArray(window.SkyBand ? window.SkyBand.forward : [0, -0.34, -0.94]);
-    this.nextAt = -1;
+    this.queue = [];
+    this.nextSingle = -1;
+    this.nextShower = -1;
+    this.opening = true;
+    this.kickoffPending = true;
     this._pos = new THREE.Vector3();
-    this._dir = new THREE.Vector3();
     this._x = new THREE.Vector3();
     this._y = new THREE.Vector3();
     this._z = new THREE.Vector3();
     this._m = new THREE.Matrix4();
+
+    // Restart the opening meteors whenever the ceremony locks in front of a
+    // new wearer (headset handed over, or reset with Esc).
+    this.onLocked = () => (this.kickoffPending = true);
+    this.el.sceneEl.addEventListener("standby-locked", this.onLocked);
   },
-  schedule(time) {
-    this.nextAt = time + this.data.minGap + Math.random() * (this.data.maxGap - this.data.minGap);
+  gap(min, max) {
+    return min + Math.random() * (max - min);
   },
-  spawn(meteor, time) {
+  kickoff(time) {
+    this.kickoffPending = false;
+    this.queue.length = 0;
+    this.opening = true;
+    this.nextShower = time + this.data.firstShower;
+    this.nextSingle = this.nextShower + 3000;
+  },
+  /* A random direction in the sky in front of the wearer (so the LED audience
+     sees it), away from the orb. Elevation/azimuth in degrees. */
+  skyDirection(minEl, maxEl, maxAz) {
     const DEG = Math.PI / 180;
-    const dir = this._dir;
+    const dir = new THREE.Vector3();
     for (let tries = 0; tries < 20; tries++) {
-      // Mostly in front of the wearer (so the LED audience sees them), upper sky.
-      const az = (Math.random() * 2 - 1) * 85 * DEG;
-      const el = (-8 + Math.random() * 58) * DEG;
+      const az = (Math.random() * 2 - 1) * maxAz * DEG;
+      const el = (minEl + Math.random() * (maxEl - minEl)) * DEG;
       dir.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
       if (dir.angleTo(this.forward) > this.data.avoidOrb * DEG) break;
     }
+    return dir;
+  },
+  planShower(time, size) {
+    const DEG = Math.PI / 180;
+    // Meteors in a shower all fly away from one point in the sky, low enough to
+    // stay in view while the wearer looks down at the orb (~22° below level).
+    const radiant = this.skyDirection(18, 38, 50);
+    const count = size + Math.floor(Math.random() * 3);
+    let at = time;
+    for (let i = 0; i < count; i++) {
+      at += 120 + Math.random() * 330;
+      const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+        .cross(radiant)
+        .normalize();
+      const start = radiant.clone().applyAxisAngle(axis, (6 + Math.random() * 22) * DEG);
+      if (start.angleTo(this.forward) < this.data.avoidOrb * DEG) continue;
+      const away = start.clone().sub(radiant);
+      const tangent = away.sub(start.clone().multiplyScalar(away.dot(start))).normalize();
+      this.queue.push({ at, start, tangent, shower: true });
+    }
+  },
+  spawn(meteor, time, item) {
+    const DEG = Math.PI / 180;
+    let dir = item && item.start;
+    let tangent = item && item.tangent;
+    if (!dir) {
+      dir = this.skyDirection(-8, 50, 85);
+      // A random tangent that heads downward, like a falling star.
+      tangent = new THREE.Vector3(Math.random() * 2 - 1, -0.6 - Math.random(), Math.random() * 2 - 1);
+      tangent.sub(dir.clone().multiplyScalar(tangent.dot(dir))).normalize();
+    }
+    const shower = Boolean(item && item.shower);
     meteor.start.copy(dir);
-    // Travel direction: a random tangent that heads downward, like a falling star.
-    const tangent = new THREE.Vector3(Math.random() * 2 - 1, -0.6 - Math.random(), Math.random() * 2 - 1);
-    tangent.sub(dir.clone().multiplyScalar(tangent.dot(dir))).normalize();
     meteor.axis.crossVectors(dir, tangent).normalize();
     meteor.born = time;
-    meteor.duration = 1000 + Math.random() * 700;
-    meteor.travel = (14 + Math.random() * 10) * DEG;
-    meteor.length = 45 + Math.random() * 35;
+    meteor.duration = shower ? 700 + Math.random() * 400 : 1000 + Math.random() * 700;
+    meteor.travel = (shower ? 10 + Math.random() * 8 : 14 + Math.random() * 10) * DEG;
+    meteor.length = shower ? 35 + Math.random() * 25 : 45 + Math.random() * 35;
     meteor.active = true;
     meteor.mesh.visible = true;
   },
   tick(time) {
     const launched = this.el.sceneEl.is("launched");
-    if (this.nextAt < 0) this.schedule(time);
 
-    if (!launched && time >= this.nextAt) {
-      const free = this.meteors.find((m) => !m.active);
-      if (free) this.spawn(free, time);
-      this.schedule(time);
+    if (launched) {
+      this.queue.length = 0;
+    } else {
+      if (this.kickoffPending || this.nextSingle < 0) this.kickoff(time);
+      if (time >= this.nextSingle) {
+        this.queue.push({ at: time });
+        this.nextSingle = time + this.gap(this.data.minGap, this.data.maxGap);
+      }
+      if (time >= this.nextShower) {
+        this.planShower(time, this.opening ? this.data.openingShowerSize : this.data.showerSize);
+        this.opening = false;
+        this.nextShower = time + this.gap(this.data.showerMinGap, this.data.showerMaxGap);
+        // Let the shower breathe before the next single meteor.
+        this.nextSingle = Math.max(this.nextSingle, time + 3000);
+      }
+      for (let i = this.queue.length - 1; i >= 0; i--) {
+        if (this.queue[i].at > time) continue;
+        const item = this.queue.splice(i, 1)[0];
+        const free = this.meteors.find((m) => !m.active);
+        if (free) this.spawn(free, time, item);
+      }
     }
 
     for (const meteor of this.meteors) {
@@ -606,6 +676,7 @@ AFRAME.registerComponent("shooting-stars", {
     }
   },
   remove() {
+    this.el.sceneEl.removeEventListener("standby-locked", this.onLocked);
     this.meteors.forEach((m) => {
       this.el.object3D.remove(m.mesh);
       m.mesh.geometry.dispose();

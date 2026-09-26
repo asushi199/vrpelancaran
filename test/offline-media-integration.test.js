@@ -72,6 +72,13 @@ test("an operator launch during re-centring locks the anchor so the screen can s
   assert.match(launch, /if \(anchor && !anchor\.locked\) anchor\.lockAtCurrentPose\(\)/);
 });
 
+test("a meteor shower opens the scene right after the orb appears", () => {
+  const launch = read("js/launch.js");
+  assert.match(launch, /firstShower: \{ default: 1000 \}/);
+  assert.match(launch, /this\.opening \? this\.data\.openingShowerSize : this\.data\.showerSize/);
+  assert.match(launch, /addEventListener\("standby-locked", this\.onLocked\)/);
+});
+
 test("service worker caches only the lightweight app shell", () => {
   const worker = read("service-worker.js");
   assert.match(worker, /skipWaiting\(\)/);
