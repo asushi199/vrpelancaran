@@ -1,5 +1,5 @@
 /* Generates assets/sky-galaxy.ppm: a 360° equirectangular deep-blue galaxy sky
-   matching the first frame of Peluncuran.mp4 (diagonal Milky Way band, blue-purple
+   matching the first frame of Pelancaran.mp4 (diagonal Milky Way band, blue-purple
    nebula). Bright stars are drawn at runtime as GPU points (see galaxy-stars in
    js/launch.js), so this texture only carries the soft, low-frequency light.
 

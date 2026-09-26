@@ -91,9 +91,11 @@ test("the title card shows the JPN emblem and the three launch lines in real fon
   const html = read("index.html");
   assert.match(html, /src="assets\/logo-jata-negara\.png"/);
   assert.match(html, /title-card="logo: #jpnLogo/);
-  assert.match(launch, /kicker: "PELUNCURAN"/);
+  assert.match(launch, /kicker: "PELANCARAN"/);
+  assert.doesNotMatch(launch, /PELUNCURAN/);
   assert.match(launch, /book: "BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME"/);
-  assert.match(launch, /title: "JEJAK IMPAK"/);
+  assert.match(launch, /title: "Jejak Impak"/);
+  assert.match(launch, /assets\/fonts\/KaushanScript-Regular\.ttf/);
   assert.match(launch, /ministry: \["KEMENTERIAN PENDIDIKAN", "JABATAN PENDIDIKAN NEGERI PERAK"\]/);
   assert.match(launch, /assets\/fonts\/Cinzel-VariableFont_wght\.ttf/);
   assert.match(launch, /this\.el\.emit\("film-cut"\)/);
@@ -101,9 +103,13 @@ test("the title card shows the JPN emblem and the three launch lines in real fon
 
 test("the title is layered in depth, with JEJAK IMPAK as extruded gold letters and a light sweep", () => {
   const launch = read("js/launch.js");
-  assert.match(launch, /const TITLE_DEPTH = \{ emblem: 0\.35, text: 0, title: -0\.2, glow: -0\.6 \}/);
+  assert.match(launch, /const TITLE_DEPTH = \{ emblem: 0\.35, book: 0\.15, text: 0, title: -0\.2, glow: -0\.6 \}/);
+  // Line 2 (the book) is the highlight, kept on one line; JEJAK IMPAK is smaller.
+  assert.match(launch, /drawSpacedText\(b, TITLE_LINES\.book, BW \/ 2, bookBaselineInCanvas, 2\)/);
+  assert.match(launch, /const titleSize = 129;/);
   assert.match(launch, /new THREE\.ExtrudeGeometry\(shapes/);
-  assert.match(launch, /glyphs: \{ default: "assets\/fonts\/cinzel-bold-title\.json" \}/);
+  assert.match(launch, /glyphs: \{ default: "assets\/fonts\/title-glyphs\.json" \}/);
+  assert.match(launch, /shapes\.push\(brushSwoosh\(width, capHeight\)\)/);
   assert.match(launch, /metalness: 1/);
   assert.match(launch, /titleSweep\(time \/ 1000\)/);
 });

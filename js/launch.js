@@ -1,6 +1,6 @@
 /* =============================================================
-   VR Peluncuran — launch interaction & ceremony effects
-   Peluncuran Buku Himpunan Amalan Terbaik Pengetua & Guru Besar
+   VR Pelancaran — launch interaction & ceremony effects
+   Pelancaran Buku Himpunan Amalan Terbaik Pengetua & Guru Besar
    PRIME – Jejak Impak · JPN Perak · 30 September 2026
    ============================================================= */
 
@@ -817,7 +817,7 @@ AFRAME.registerComponent("space-dust", {
 
 /* =============================================================
    ceremony-orb — the golden crystal orb, in the colours of the first
-   frame of Peluncuran.mp4, built as a true volume so it reads as a
+   frame of Pelancaran.mp4, built as a true volume so it reads as a
    solid object from any angle and in stereo:
    - the inside is ray-marched per eye: a white-hot core, warm inner
      glow and swirling gold filaments at real depths inside the glass
@@ -1214,8 +1214,10 @@ AFRAME.registerComponent("ceremony-orb", {
    title-card — the JPN Perak emblem and the launch title above the
    orb, built in layers at different depths so it reads as a
    dimensional display in the headset:
-     emblem (front) · ministry + PELUNCURAN + book line · JEJAK IMPAK
-     as extruded gold metal letters · a soft gold glow (back)
+     emblem (front) · book title, the highlight, in bright gold ·
+     ministry + PELANCARAN · "Jejak Impak" in the cover's brush script as
+     smaller extruded gold metal letters with a brush stroke · a soft gold
+     glow (back)
    Layers are scaled by their distance so the single-eye (LED) view
    keeps the same layout. A light sweep crosses the gold every few
    seconds. Text uses real fonts (Cinzel, Montserrat; OFL, bundled in
@@ -1223,18 +1225,19 @@ AFRAME.registerComponent("ceremony-orb", {
    ============================================================= */
 const TITLE_LINES = {
   ministry: ["KEMENTERIAN PENDIDIKAN", "JABATAN PENDIDIKAN NEGERI PERAK"],
-  kicker: "PELUNCURAN",
+  kicker: "PELANCARAN",
   book: "BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME",
-  title: "JEJAK IMPAK",
+  title: "Jejak Impak", // brush script, as on the book cover
 };
 
 const TITLE_FONTS = [
   ["Cinzel", "assets/fonts/Cinzel-VariableFont_wght.ttf", "400 900"],
   ["Montserrat", "assets/fonts/Montserrat-VariableFont_wght.ttf", "100 900"],
+  ["Kaushan Script", "assets/fonts/KaushanScript-Regular.ttf", "400"],
 ];
 
 // Depth of each layer in metres, + toward the wearer, relative to the card.
-const TITLE_DEPTH = { emblem: 0.35, text: 0, title: -0.2, glow: -0.6 };
+const TITLE_DEPTH = { emblem: 0.35, book: 0.15, text: 0, title: -0.2, glow: -0.6 };
 const TITLE_SWEEP_PERIOD = 6; // seconds between light sweeps
 
 function loadTitleFonts() {
@@ -1275,7 +1278,8 @@ function titleSweep(seconds) {
 }
 
 /* Glyph outlines (tools/make-title-glyphs.py) → THREE.Shapes, laid out with
-   letter spacing, baseline at y = 0, centred on x = 0. */
+   letter spacing, baseline at y = 0, centred on x = 0. Returns the shapes and
+   the laid-out width in metres. */
 function titleShapes(font, text, capHeightMetres, spacingUnits) {
   const scale = capHeightMetres / font.capHeight;
   const chars = [...text];
@@ -1301,7 +1305,30 @@ function titleShapes(font, text, capHeightMetres, spacingUnits) {
     }
     cursor += glyph.advance + spacingUnits;
   }
-  return shapes;
+  return { shapes, width: total * scale };
+}
+
+/* The gold brush stroke under "Impak" on the book cover: a tapered stroke
+   that dips under the word and lifts to the right. */
+function brushSwoosh(width, capHeight) {
+  const start = new THREE.Vector2(-0.2 * width, -0.13 * capHeight);
+  const control = new THREE.Vector2(0.16 * width, -0.44 * capHeight);
+  const end = new THREE.Vector2(0.5 * width, -0.02 * capHeight);
+  const curve = new THREE.QuadraticBezierCurve(start, control, end);
+  const steps = 48;
+  const upper = [];
+  const lower = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const p = curve.getPoint(t);
+    const tangent = curve.getTangent(t);
+    const normal = new THREE.Vector2(-tangent.y, tangent.x);
+    // Thick early, tapering to a fine tail, like a brush lifting off.
+    const half = 0.5 * 0.15 * capHeight * Math.pow(Math.sin(Math.PI * t), 0.6) * (1.2 - 0.7 * t);
+    upper.push(p.clone().addScaledVector(normal, half));
+    lower.push(p.clone().addScaledVector(normal, -half));
+  }
+  return new THREE.Shape([...upper, ...lower.reverse()]);
 }
 
 /* A bright studio-like environment for the gold, so metal letters shine even
@@ -1337,7 +1364,7 @@ AFRAME.registerComponent("title-card", {
     logo: { type: "selector" },
     width: { default: 4.6 }, // metres
     distance: { default: 4.2 }, // from the wearer's eyes, for depth compensation
-    glyphs: { default: "assets/fonts/cinzel-bold-title.json" },
+    glyphs: { default: "assets/fonts/title-glyphs.json" },
   },
   init() {
     this.layers = new THREE.Group();
@@ -1373,16 +1400,18 @@ AFRAME.registerComponent("title-card", {
   },
   build(font) {
     const W = 2400;
-    const H = 1120;
+    const H = 1100;
     this.H = H;
     this.k = this.data.width / W; // metres per canvas pixel
     const cx = W / 2;
-    const titleBaseline = 1066;
-    const titleSize = 196;
-    const titleSpacing = 16;
+    // Line 2 (the book) is the highlight; JEJAK IMPAK is a smaller subtitle.
+    const bookBaseline = 851;
+    const titleBaseline = 1010;
+    const titleSize = 129; // Kaushan Script: capitals ~92px tall
+    const titleSpacing = 0;
     const renderer = this.el.sceneEl.renderer;
 
-    // ---- Text layer: ministry lines, divider, PELUNCURAN, book line ----
+    // ---- Text layer: ministry lines, divider, PELANCARAN ----
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
@@ -1425,24 +1454,12 @@ AFRAME.registerComponent("title-card", {
     ctx.fillStyle = gold(y - 60, y);
     drawSpacedText(ctx, TITLE_LINES.kicker, cx, y, 22);
 
-    y += 110;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = "rgba(0,0,0,0.6)";
-    ctx.fillStyle = "#fbf6ea";
-    let size = 64;
-    ctx.font = `600 ${size}px Montserrat, sans-serif`;
-    while (size > 30 && spacedWidth(ctx, TITLE_LINES.book, 3) > W - 120) {
-      size -= 1;
-      ctx.font = `600 ${size}px Montserrat, sans-serif`;
-    }
-    drawSpacedText(ctx, TITLE_LINES.book, cx, y, 3);
-
     // Fallback: if the 3D letters cannot be built, draw the title flat.
     if (!font) {
-      ctx.font = `700 ${titleSize}px Cinzel, serif`;
+      ctx.font = `400 ${titleSize}px "Kaushan Script", cursive`;
       ctx.shadowColor = "rgba(236,190,120,0.75)";
-      ctx.shadowBlur = 40;
-      ctx.fillStyle = gold(titleBaseline - 160, titleBaseline);
+      ctx.shadowBlur = 24;
+      ctx.fillStyle = gold(titleBaseline - 90, titleBaseline);
       drawSpacedText(ctx, TITLE_LINES.title, cx, titleBaseline, titleSpacing);
     }
     ctx.shadowBlur = 0;
@@ -1475,7 +1492,57 @@ AFRAME.registerComponent("title-card", {
       new THREE.PlaneGeometry(this.data.width * 1.05, this.data.width * 0.5),
       additiveMaterial(glowTexture, 0.55)
     );
-    this.place(glow, TITLE_DEPTH.glow, 640);
+    this.place(glow, TITLE_DEPTH.glow, 600);
+
+    // ---- Line 2, the book title: the highlight. On its own canvas, wider than
+    // the card so it stays one line at a larger size; bright gold with a glow,
+    // one layer in front of the other text. ----
+    const BW = 3000;
+    const BH = 200;
+    const bookBaselineInCanvas = 132;
+    const bookCanvas = document.createElement("canvas");
+    bookCanvas.width = BW;
+    bookCanvas.height = BH;
+    const b = bookCanvas.getContext("2d");
+    b.textBaseline = "alphabetic";
+    let bookSize = 72;
+    b.font = `700 ${bookSize}px Montserrat, sans-serif`;
+    while (bookSize > 40 && spacedWidth(b, TITLE_LINES.book, 2) > BW - 160) {
+      bookSize -= 1;
+      b.font = `700 ${bookSize}px Montserrat, sans-serif`;
+    }
+    const bookGold = b.createLinearGradient(0, bookBaselineInCanvas - bookSize * 0.72, 0, bookBaselineInCanvas);
+    bookGold.addColorStop(0, "#fff4d6");
+    bookGold.addColorStop(0.5, "#f3cd86");
+    bookGold.addColorStop(1, "#d9a35c");
+    b.fillStyle = bookGold;
+    b.shadowColor = "rgba(240,190,110,0.75)";
+    b.shadowBlur = 26;
+    drawSpacedText(b, TITLE_LINES.book, BW / 2, bookBaselineInCanvas, 2);
+    b.shadowColor = "rgba(255,236,190,0.9)";
+    b.shadowBlur = 6;
+    drawSpacedText(b, TITLE_LINES.book, BW / 2, bookBaselineInCanvas, 2);
+    b.shadowBlur = 0;
+    const bookTexture = srgbTexture(new THREE.CanvasTexture(bookCanvas));
+    if (renderer) bookTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    bookTexture.needsUpdate = true;
+    const bookMaterial = new THREE.MeshBasicMaterial({
+      map: bookTexture,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    });
+    this.addSweep(bookMaterial, "basic");
+    const bookY = bookBaseline - bookBaselineInCanvas + BH / 2;
+    const book = new THREE.Mesh(new THREE.PlaneGeometry(BW * this.k, BH * this.k), bookMaterial);
+    this.place(book, TITLE_DEPTH.book, bookY);
+    const bookGlow = new THREE.Mesh(
+      new THREE.PlaneGeometry(BW * this.k * 0.95, BH * this.k * 1.8),
+      additiveMaterial(glowTexture, 0.4)
+    );
+    this.place(bookGlow, TITLE_DEPTH.book - 0.05, bookY);
+    this.disposables.push(book.geometry, bookMaterial, bookTexture, bookGlow.geometry, bookGlow.material);
     this.disposables.push(glow.geometry, glow.material, glowTexture);
 
     // ---- Emblem, in front, with a soft halo just behind it ----
@@ -1500,15 +1567,17 @@ AFRAME.registerComponent("title-card", {
     if (font && renderer) {
       const capHeight = titleSize * (font.capHeight / font.unitsPerEm) * this.k;
       const spacingUnits = (titleSpacing / titleSize) * font.unitsPerEm;
-      const shapes = titleShapes(font, TITLE_LINES.title, capHeight, spacingUnits);
-      const depth = 0.07;
+      const { shapes, width } = titleShapes(font, TITLE_LINES.title, capHeight, spacingUnits);
+      shapes.push(brushSwoosh(width, capHeight));
+      // Brush strokes are finer than the old capitals: a thinner extrusion.
+      const depth = 0.045;
       const geometry = new THREE.ExtrudeGeometry(shapes, {
         depth,
-        curveSegments: 8,
+        curveSegments: 10,
         bevelEnabled: true,
-        bevelThickness: 0.014,
-        bevelSize: 0.007,
-        bevelSegments: 3,
+        bevelThickness: 0.009,
+        bevelSize: 0.004,
+        bevelSegments: 2,
       });
       geometry.translate(0, 0, -depth / 2);
       geometry.computeBoundingBox();
@@ -2133,7 +2202,7 @@ AFRAME.registerComponent("orb-dissolve", {
      0–300     orb swells and brightens, gold motes burst outward
      60–300    white-gold flash rises to full (the LED operator's cue)
      300       behind the flash: orb hidden, sky dimmed, film screen shown
-     420–1120  flash fades, revealing Peluncuran.mp4 in the headset
+     420–1120  flash fades, revealing Pelancaran.mp4 in the headset
    Everything is driven from tick(): window.requestAnimationFrame does not
    run while the Quest is presenting an immersive session.
    ============================================================= */

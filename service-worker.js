@@ -1,4 +1,4 @@
-const CACHE_NAME = "vr-pelancaran-shell-v8";
+const CACHE_NAME = "vr-pelancaran-shell-v9";
 const SHELL_URLS = [
   "./",
   "index.html",
@@ -10,7 +10,8 @@ const SHELL_URLS = [
   "assets/logo-jata-negara.png",
   "assets/fonts/Cinzel-VariableFont_wght.ttf",
   "assets/fonts/Montserrat-VariableFont_wght.ttf",
-  "assets/fonts/cinzel-bold-title.json",
+  "assets/fonts/KaushanScript-Regular.ttf",
+  "assets/fonts/title-glyphs.json",
 ].map((path) => new URL(path, self.registration.scope).toString());
 
 async function cacheShell() {

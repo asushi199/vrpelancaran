@@ -2,7 +2,7 @@
    and by galaxy-stars in js/launch.js (star density), so both line up.
 
    The band passes behind the launch orb (straight ahead, ~20° below the horizon)
-   and rises to the right at ~55°, as in the first frame of Peluncuran.mp4.
+   and rises to the right at ~55°, as in the first frame of Pelancaran.mp4.
    Directions are in the ceremony anchor's frame: -Z forward, +X right, +Y up. */
 (function (root) {
   const DEG = Math.PI / 180;

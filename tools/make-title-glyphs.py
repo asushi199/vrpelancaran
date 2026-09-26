@@ -1,8 +1,10 @@
 """Export the outlines of the 3D title letters for the VR scene.
 
-Takes Cinzel (SIL OFL, assets/fonts) at Bold (wght 700) and writes the glyph
-outlines for "JEJAK IMPAK" to assets/fonts/cinzel-bold-title.json. The scene
-extrudes them into gold 3D letters (title-card in js/launch.js).
+Takes Kaushan Script (SIL OFL, assets/fonts) - a brush script close to the
+lettering on the book cover - and writes the glyph outlines for "Jejak Impak"
+to assets/fonts/title-glyphs.json. The scene extrudes them into gold 3D
+letters (title-card in js/launch.js). A variable font can be used too: it is
+instanced at WEIGHT first.
 
 JSON: { unitsPerEm, capHeight, glyphs: { "J": { advance, commands: [...] } } }
 where each command is ["M", x, y] | ["L", x, y] | ["Q", cx, cy, x, y] |
@@ -15,13 +17,14 @@ from pathlib import Path
 
 from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.removeOverlaps import removeOverlaps
 from fontTools.varLib.instancer import OverlapMode, instantiateVariableFont
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "assets" / "fonts" / "Cinzel-VariableFont_wght.ttf"
-OUTPUT = ROOT / "assets" / "fonts" / "cinzel-bold-title.json"
-TEXT = "JEJAK IMPAK"
-WEIGHT = 700
+SOURCE = ROOT / "assets" / "fonts" / "KaushanScript-Regular.ttf"
+OUTPUT = ROOT / "assets" / "fonts" / "title-glyphs.json"
+TEXT = "Jejak Impak"
+WEIGHT = 700  # only used for variable fonts
 
 
 class CommandPen(BasePen):
@@ -47,7 +50,11 @@ class CommandPen(BasePen):
 
 # Merge overlapping contours (needs skia-pathops), so each letter extrudes as
 # one clean solid without seams where strokes overlap.
-font = instantiateVariableFont(TTFont(SOURCE), {"wght": WEIGHT}, overlap=OverlapMode.REMOVE)
+font = TTFont(SOURCE)
+if "fvar" in font:
+    font = instantiateVariableFont(font, {"wght": WEIGHT}, overlap=OverlapMode.REMOVE)
+else:
+    removeOverlaps(font)
 glyph_set = font.getGlyphSet()
 cmap = font.getBestCmap()
 hmtx = font["hmtx"]

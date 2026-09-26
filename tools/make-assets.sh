@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Rebuilds the VR scene images from assets/Peluncuran.mp4 (needs ffmpeg + node).
+# Rebuilds the VR scene images from assets/Pelancaran.mp4 (needs ffmpeg + node).
 #   assets/Orb_firstframe_final.png  first frame of the film (visual reference)
 #   assets/orb-sprite.png            the orb cut out of that frame, background removed
 #   assets/orb-interior.png          the light inside the orb only (drawn additively in VR)
@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-ffmpeg -v error -y -i assets/Peluncuran.mp4 -frames:v 1 assets/Orb_firstframe_final.png
+ffmpeg -v error -y -i assets/Pelancaran.mp4 -frames:v 1 assets/Orb_firstframe_final.png
 
 # 768px square around the orb (diameter ~340px at 1920x1080). Subtract the measured
 # background blue, then fade out beyond the glow so no square edge shows in VR.

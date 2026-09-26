@@ -1,7 +1,7 @@
-# VR Peluncuran – 项目交接说明
+# VR Pelancaran – 项目交接说明
 
 ## 活动背景
-- 活动：**Peluncuran Buku Himpunan Amalan Terbaik Pengetua & Guru Besar PRIME – Jejak Impak**
+- 活动：**Pelancaran Buku Himpunan Amalan Terbaik Pengetua & Guru Besar PRIME – Jejak Impak**（州领导 2026-09-26 定用 "Pelancaran"，不用 "Peluncuran"）
 - 主办：Sektor Pengurusan Sekolah, Jabatan Pendidikan Negeri Perak (JPN Perak)
 - 日期：**30 September 2026**
 - 性质：官方启用仪式的 gimik 环节，主礼嘉宾在台上操作
@@ -10,7 +10,7 @@
 1. 主礼嘉宾戴上 VR 眼镜，进入一个 VR 环境。
 2. VR 画面**同步投到 16:9 LED 大屏**，观众看得到嘉宾在 VR 里看到的画面。
 3. 嘉宾在 VR 里**触摸或点击一颗金色光球**。
-4. 点击瞬间：光球放大加一道约 0.3 秒的白金色闪光，然后 **LED 大屏切换播放启用影片** `peluncuran.mp4`。
+4. 点击瞬间：光球放大加一道约 0.3 秒的白金色闪光，然后 **LED 大屏切换播放启用影片** `Pelancaran.mp4`。
 5. 影片最后停在书籍封面上（已内置长时间定格）。
 
 ## 光球的视觉规格（必须和影片首帧一致）
@@ -30,15 +30,15 @@
   - 外圈光晕逐渐过渡到背景
   - 背景深蓝：`#081730`，四角最暗约 `#040C1B`
 
-## 影片 `peluncuran.mp4` 规格
-- 1920×1080，25fps，H.264 + AAC，约 69 秒
+## 影片 `Pelancaran.mp4` 规格（2026-09-26 新版，取代 `Peluncuran.mp4`）
+- 1920×1080，30fps，H.264 + AAC，约 69 秒
 - 时间轴：
   - 0–3 秒：光球静止（衔接 VR 点击）
   - 3.3 秒：光球爆开
   - 5–16 秒：怡保石灰岩山景加金色光路，两句马来文字
   - 17–26 秒：穿过四道金色光拱门：IDEA、TINDAKAN、KOLABORASI、IMPAK
   - 30.5 秒：金光爆开，封面出现
-  - 31 秒到结束：封面定格，两侧有 PELUNCURAN RASMI 和 30 SEPTEMBER 2026
+  - 31 秒到结束：封面定格，两侧有 PELANCARAN RASMI 和 30 SEPTEMBER 2026
 
 ## 设计原则
 - 色调：深蓝加金色，和书籍封面一致
@@ -48,7 +48,7 @@
 ## 已确定的方案（2026-09-26）
 - **眼镜**：Meta Quest 3（同上次活动）。
 - **技术**：沿用旧项目的 A-Frame 1.7 + WebXR（Quest 浏览器），GitHub Pages 发布，现场不依赖网络。
-- **LED 影片由电脑播放**：LED 接笔记本，OBS 两个场景：①Quest 投屏 ②`Peluncuran.mp4` 全屏。
+- **LED 影片由电脑播放**：LED 接笔记本，OBS 两个场景：①Quest 投屏 ②`Pelancaran.mp4` 全屏。
 - **切换方式**：操作员看到 LED 上的白金闪光后按 OBS 热键切到影片场景。
 - **头显内也播放影片，默认有声**（`?filmAudio=0` 可静音）。OBS 里要把 Quest 投屏的声音静音，避免和 LED 电脑的声音重复。
 - **备用方案**：VR 或投屏出问题时，操作员直接切到 OBS 影片场景即可，流程相同。
@@ -60,19 +60,19 @@
 - 背景动态（天空本身不动，避免嘉宾晕眩）：`galaxy-sky` 银河亮度缓慢流动、`galaxy-stars` 星星闪烁、`shooting-stars` 流星：所有流星平行地从右上往左下划过（`fallAngle` 默认水平以下 55°，按每颗流星所在位置的本地水平线计算，所以看起来平行）；光球出现约 1 秒后先来一场 14–17 颗的开场流星雨，之后每 3–6 秒一颗、每 18–28 秒一场 9–12 颗；起点在嘉宾低头看光球时的视野内（仰角 -12~28°、左右 ±70°），整条路径避开光球 26° 内；启动后停止；每次场景重新锁定都会重新开场、`space-dust` 身边 2–12 米的飘浮微尘（启动后淡出，不挡影片）。
 - 头显银幕：弧形 72°，中心在视线下方 12°（嘉宾触碰光球时往下看约 22°，闪光后银幕仍在眼前；抬头平视看 69 秒影片也舒服）。
 - 播放保护：`play()` 被拒绝时不放弃，银幕照常显示并重试；手势触碰不算用户手势，但操作员之前点过网页（选文件、进入 VR），浏览器一般允许有声播放；万一被拒则改静音播放，不会卡住。操作员在场景重新对准期间按 Space 启动，会先把场景锁定在当前视线。
-- 标题卡 `title-card`（光球上方，距离 4.2 米、中心在视线上方 11°、宽 4.6 米）：JPN 国徽（`assets/logo-jata-negara.png`，由 `python tools/make-logo.py` 从 `assets/logo-jpn-source.png` 去白底生成，盾牌内的白色保留）+ 白色 KEMENTERIAN PENDIDIKAN / JABATAN PENDIDIKAN NEGERI PERAK + 金色 PELUNCURAN + BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME（单行）+ 大号 JEJAK IMPAK。文字用真实字体 Cinzel / Montserrat（SIL OFL，`assets/fonts/`）在画布上排版；切到影片时隐藏，Esc 复位后重新显示。
-  - 立体处理：分层景深（`TITLE_DEPTH`：国徽最前 +0.35 m、小字 0、JEJAK IMPAK −0.2 m、金色光晕 −0.6 m，按距离缩放，LED 单眼画面布局不变）；JEJAK IMPAK 是挤出的 3D 金属字（字形由 `python tools/make-title-glyphs.py` 从 Cinzel Bold 导出到 `assets/fonts/cinzel-bold-title.json`，需要 fontTools + skia-pathops；读取失败时退回平面字）；金字和文字每 6 秒有一道扫光。
+- 标题卡 `title-card`（光球上方，距离 4.2 米、中心在视线上方 11°、宽 4.6 米）：JPN 国徽（`assets/logo-jata-negara.png`，由 `python tools/make-logo.py` 从 `assets/logo-jpn-source.png` 去白底生成，盾牌内的白色保留）+ 白色 KEMENTERIAN PENDIDIKAN / JABATAN PENDIDIKAN NEGERI PERAK + 三行标题（州领导 2026-09-26 定的排列，不可改动）：**PELANCARAN**（第 1 行，金色）/ **BUKU HIMPUNAN AMALAN TERBAIK PENGETUA & GURU BESAR PRIME**（第 2 行，必须单行；是全卡的重点：粗体亮金色 + 光晕 + 单独往前一层，画布比卡片宽，横跨约 64°）/ **Jejak Impak**（第 3 行，缩小为副标；改用和封面相近的笔刷手写体 Kaushan Script，按封面写成首字母大写，下面有一道金色笔刷划线）。文字用真实字体 Cinzel / Montserrat / Kaushan Script（SIL OFL，`assets/fonts/`）在画布上排版；切到影片时隐藏，Esc 复位后重新显示。
+  - 立体处理：分层景深（`TITLE_DEPTH`：国徽最前 +0.35 m、书名 +0.15 m、小字 0、JEJAK IMPAK −0.2 m、金色光晕 −0.6 m，按距离缩放，LED 单眼画面布局不变）；Jejak Impak 和笔刷划线是挤出的 3D 金属字（字形由 `python tools/make-title-glyphs.py` 从 Kaushan Script 导出到 `assets/fonts/title-glyphs.json`，需要 fontTools + skia-pathops；划线由 `brushSwoosh()` 生成；读取失败时退回平面字）；金字和文字每 6 秒有一道扫光。
 - 素材重新生成：`sh tools/make-assets.sh`（需要 ffmpeg + node）。
 - 点击时间轴：0–300ms 光球放大变亮 → 300ms 闪光全白（此时切到影片银幕）→ 420–1120ms 闪光淡出。动画都在 `tick()` 里跑（Quest 沉浸模式下 `requestAnimationFrame` 不运行）。
 - 彩排调光球大小：`index.html?orbScale=1.12`（桌面 80° 视角下 1.12 ≈ 首帧的 31%；以 LED 上的投屏画面为准）。
 - 桌面测试：`index.html?simulateVR=1`（鼠标拖动看，点光球启动；Space/L 启动，Esc 回到光球，R 重新对准）。
 
 ## 现场操作流程（草案，彩排时确认）
-1. Quest 打开网页 → 在面板选 `Peluncuran.mp4`（已拷进头显）→ 按 GUNA FAIL TEMPATAN → 进入 VR。
-2. 笔记本：OBS 场景 A = Quest 投屏（静音投屏声音），场景 B = 媒体源 `Peluncuran.mp4`（勾选"源激活时重新开始播放"）。转场用"淡入颜色"（颜色约 `#FFF6E0`，约 500ms），设置热键切到 B。
+1. Quest 打开网页 → 在面板选 `Pelancaran.mp4`（已拷进头显）→ 按 GUNA FAIL TEMPATAN → 进入 VR。
+2. 笔记本：OBS 场景 A = Quest 投屏（静音投屏声音），场景 B = 媒体源 `Pelancaran.mp4`（勾选"源激活时重新开始播放"）。转场用"淡入颜色"（颜色约 `#FFF6E0`，约 500ms），设置热键切到 B。
 3. 嘉宾戴上眼镜 → 场景自动对准 → 嘉宾摸/点光球 → LED 上出现白金闪光 → 操作员按热键 → LED 播放影片。
 4. 重来：操作员摘下头显按 Esc（需蓝牙键盘）或刷新页面；OBS 切回场景 A。
 
 ## 仍待确认
 - Quest 3 投屏到电脑的方式和画面比例（影响 `orbScale`）。
-- 旧素材（`opening.mp4`、`space360.mp4` 等）是否从 repo 和 GitHub Pages 移除；`Peluncuran.mp4` 是否要上传（上传后会公开在 Pages 上）。
+- 旧素材（`opening.mp4`、`space360.mp4` 等）是否从 repo 和 GitHub Pages 移除；`Pelancaran.mp4` 是否要上传（上传后会公开在 Pages 上）。
